@@ -221,8 +221,6 @@ class StreamingExample:
         ).wait()
 
     def fly(self):
-
-
         self.drone(
             FlyingStateChanged(state="hovering")
             | (TakeOff() & FlyingStateChanged(state="hovering"))
