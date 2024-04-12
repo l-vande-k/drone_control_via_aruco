@@ -5,11 +5,13 @@ import queue
 import uuid
 import threading
 import numpy as np
+import time
+
 import cv2
 import cv2.aruco as aruco
 
 import olympe
-from olympe.messages.ardrone3.Piloting import TakeOff, Landing
+from olympe.messages.ardrone3.Piloting import TakeOff, Landing, PCMD
 from olympe.messages.ardrone3.Piloting import moveBy
 from olympe.messages.ardrone3.PilotingState import FlyingStateChanged
 import olympe.messages.gimbal as gimbal
@@ -31,7 +33,9 @@ class StreamingExample:
     yaw = -math.pi
     x = 0
     y = 0
+    z = 0
 
+    noAruco = False
 
     def __init__(self):
         # Create the olympe.Drone object from its IP address
@@ -118,7 +122,7 @@ class StreamingExample:
             yuv_frame_storage.append(yuv_frame)
             yuv_2d_array = yuv_frame.as_ndarray()
             yuv_frame_2dArray_storage.append(yuv_2d_array)
-            if self.frame_count < 25:
+            if self.frame_count < 10:
                 self.frame_count += 1
             else:
                 yuv_frame_2dArray_storage.popleft()
@@ -131,18 +135,23 @@ class StreamingExample:
         
         dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50) # the aruco ID must be below 50
         parameters = aruco.DetectorParameters()
+        
+        # thes values are for validating that there has been no aruco sighting
+        multiple_frames_no_marker = False
+        num_frames_no_marker = 0
 
         while True:
 
             if self.stop_processing == True:
+                print("told to stop processing")
                 break
             
-            if self.frame_count > 24:
+            if len(yuv_frame_storage) >= 5 and len(yuv_frame_2dArray_storage) >= 5:
 
                 # variables for image processing
-                k = np.array([[996.80114623, 0.0, 690.13286978],
-                            [0.0, 961.38301889, 361.68868703],
-                            [0.0, 0.0, 1.0]])
+                k = np.array([[996.80114623, 0., 690.13286978],
+                            [0., 961.38301889, 361.68868703],
+                            [0., 0., 1.]])
                 
                 d = np.array([0.01849482, 0.01653952, -0.0063708, 0.0083632, -0.21739897])
 
@@ -161,7 +170,7 @@ class StreamingExample:
                 if len(corners) > 0:
                     for i in range(0, len(ids)):
                         # Estimate pose of each marker and return the values rvec and tvec---(different from those of camera coefficients)
-                        rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners[i], 0.02, k, d)#, markerLength=50.0)
+                        rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners[i], 0.02, k, d)
                         rot, _ = cv2.Rodrigues(rvec)
 
                         sy = math.sqrt(rot[0,0] * rot[0,0] +  rot[1,0] * rot[1,0])
@@ -179,13 +188,24 @@ class StreamingExample:
                     
                         eulers = np.array([x, y, z])
                         
+                        # these measurements aren't accurate, they need to be enlarged
+                        gain = 2
                         
                         self.yaw = eulers[2]
-                        self.x = tvec[0][0][0]
-                        self.y = tvec[0][0][1]
-
-                        print("tvec: ", 2*tvec)
-                        #print("x&y: ", self.x, ", ", self.y)
+                        self.y = gain*tvec[0][0][0] # +x axis in frame is +y on drone
+                        self.x = -1*gain*tvec[0][0][1] # -y axis in frame is +x on drone
+                        self.z = tvec[0][0][2] # +z axis in frame is +z on drone
+                    multiple_frames_no_marker = False
+                    num_frames_no_marker = 0
+                else:
+                    if multiple_frames_no_marker == True:
+                        num_frames_no_marker += 1
+                    else:
+                        multiple_frames_no_marker == True
+                        
+                    # if there have been ten frames with no marker consistently then drop the bird (lol)
+                    if num_frames_no_marker == 10 and multiple_frames_no_marker:
+                        self.noAruco = True
     
 
     def flush_cb(self, stream):
@@ -215,13 +235,83 @@ class StreamingExample:
             )
         ).wait()
 
-    def fly(self):
 
+    def takeoff_spin(self):
+        self.drone(
+            FlyingStateChanged(state="hovering")
+            | (TakeOff() & FlyingStateChanged(state="hovering"))
+        ).wait()
+        
+        # take a 360 pan of the room for post processing
+        self.drone(moveBy(0, 0, 0, np.deg2rad(-30), _timeout=20)).wait()
+
+    def correct_land(self):
+        
+        temp_yaw = 0
+        temp_x = 0
+        temp_y = 0
+        temp_z = 0
+        
+        yaw_tol = 3
+        xy_tol = 0.02
+        z_min = 0.1
+                
         while True:
-            print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
+            
+            if np.rad2deg(self.yaw) < yaw_tol  and self.x < xy_tol and self.y < xy_tol and self.z < z_min:
+                print("all landing criteria met")
                 break
+            if self.noAruco:
+                print("no aruco found")
+                break
+            
+            
+            # correctional conditions, we don't want to over correct or worry about things that are close enough
+            
+            if np.rad2deg(self.yaw) > yaw_tol:
+                temp_yaw = self.yaw
+                # the rest are zero. we aren't changing those. just focus on yaw
+                temp_x = 0
+                temp_y = 0
+                temp_z = 0
+                print("correcting yaw")
+                
+            elif self.x > xy_tol and self.x > xy_tol:
+                temp_x = self.x
+                temp_y = self.y
+                
+                temp_z = 0
+                temp_yaw = 0
+                
+                print("correcting x&y")
+                
+            elif self.z > z_min:
+                temp_z = self.z
+                
+                temp_x = 0
+                temp_y = 0
+                temp_yaw = 0
+                
+                print("correcting z")
+            
+            print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
+            
+            gain_yaw = 1.5
+            gain_gaz = 0.35
+            
+            flag = 0
+            roll = int(  15*(temp_y)  )
+            pitch = int(  15*(temp_x)  )
+            yaw = int(  50*(gain_yaw*(temp_yaw))  )
+            gaz = int(  -25*gain_gaz*temp_z  )
+            timestampAndSeqNum = 0
+            
+            print("yaw input: ", yaw, "temp yaw: ", temp_yaw)
+            self.drone(PCMD(flag, roll, pitch, yaw, gaz, timestampAndSeqNum, _timeout=5)).wait()
+        
+        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
+        print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
+
 
 
 # variables used in threads
@@ -229,14 +319,19 @@ yuv_frame_2dArray_storage = deque()
 yuv_frame_storage = deque()
 
 
-def test_streaming():
+def loop_control():
     drone = StreamingExample()
     # Start the video stream
     drone.start()
-
+    
     drone.move_gimbal(-90)
+
     # Perform some live video processing while the drone is flying
-    drone.fly()
+    drone.takeoff_spin()
+    
+    print("landing sequence started")
+    
+    drone.correct_land()
 
     drone.move_gimbal(0)
     # Stop the video stream
@@ -246,4 +341,4 @@ def test_streaming():
 
 
 if __name__ == "__main__":
-    test_streaming()
+    loop_control()
