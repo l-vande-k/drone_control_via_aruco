@@ -245,7 +245,7 @@ def test_streaming():
     # Start the video stream
     drone.start()
 
-    drone.move_gimbal(0)
+    drone.move_gimbal(-90)
     # Perform some live video processing while the drone is flying
     drone.fly()
 
