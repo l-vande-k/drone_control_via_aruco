@@ -182,10 +182,13 @@ class StreamingExample:
                     
                         eulers = np.array([x, y, z])
                         
+                        # these measurements aren't accurate, they need to be enlarged
+                        gain = 2
+                        tvec = tvec*gain
                         
                         self.yaw = eulers[2]
-                        self.x = tvec[0][0][0]
-                        self.y = tvec[0][0][1]
+                        self.y = tvec[0][0][0] # +x axis in frame is +y on drone
+                        self.x = -tvec[0][0][1] # -y axis in frame is +x on drone
 
                         #print("tvec: ", tvec)
                         #print("x&y: ", self.x, ", ", self.y)
@@ -225,16 +228,42 @@ class StreamingExample:
             FlyingStateChanged(state="hovering")
             | (TakeOff() & FlyingStateChanged(state="hovering"))
         ).wait()
+        
+        # take a 360 pan of the room for post processing
+        self.drone(moveBy(0, 0, 0, 2*math.pi, _timeout=20)).wait()
+        
+        temp_yaw = 0
+        temp_x = 0
+        temp_y = 0
 
+        xy_tol = 0.03
+        yaw_tol = 4
+        
         while True:
-            if np.rad2deg(self.yaw) < 5:
+            if np.rad2deg(self.yaw) < yaw_tol and self.x < xy_tol and self.y < xy_tol:
                 break
-            print("yaw: ", np.rad2deg(self.yaw), "\n")
-            print("x&y: ", 2*self.x, ", ", 2*self.y, "\n")
-            self.drone(moveBy(self.x, self.y, 0, self.yaw, _timeout=20)).wait()
             
+            if np.rad2deg(self.yaw) < yaw_tol:
+                temp_yaw = 0
+            else:
+                temp_yaw = self.yaw
+            
+            if self.x < xy_tol and self.yaw > yaw_tol:
+                temp_x = 0
+            else:
+                temp_x = self.x
+                
+            if self.y < xy_tol and np.rad2deg(self.yaw) > yaw_tol:
+                temp_y = 0
+            else:
+                temp_y = -self.y
 
+            print("x,y,&yaw: ", self.x, ", ", self.y, ", ", np.rad2deg(self.yaw), "\n")
+            self.drone(moveBy(temp_x, temp_y, 0, temp_yaw, _timeout=20)).wait()
+        
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
+        print("x,y,&yaw: ", self.x, ", ", self.y, ", ", np.rad2deg(self.yaw), "\n")
+
 
 
 # variables used in threads
