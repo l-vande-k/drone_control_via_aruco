@@ -122,7 +122,7 @@ class StreamingExample:
             yuv_frame_storage.append(yuv_frame)
             yuv_2d_array = yuv_frame.as_ndarray()
             yuv_frame_2dArray_storage.append(yuv_2d_array)
-            if self.frame_count < 25:
+            if self.frame_count < 10:
                 self.frame_count += 1
             else:
                 yuv_frame_2dArray_storage.popleft()
@@ -135,13 +135,17 @@ class StreamingExample:
         
         dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50) # the aruco ID must be below 50
         parameters = aruco.DetectorParameters()
+        
+        # thes values are for validating that there has been no aruco sighting
+        multiple_frames_no_marker = False
+        num_frames_no_marker = 0
 
         while True:
 
             if self.stop_processing == True:
                 break
             
-            if self.frame_count > 24:
+            if self.frame_count > 9:
 
                 # variables for image processing
                 k = np.array([[996.80114623, 0., 690.13286978],
@@ -194,8 +198,18 @@ class StreamingExample:
 
                         #print("tvec: ", tvec)
                         #print("x&y: ", self.x, ", ", self.y)
+                    
+                    multiple_frames_no_marker = False
+                    num_frames_no_marker = 0
                 else:
-                    self.noAruco = True
+                    if multiple_frames_no_marker == True:
+                        num_frames_no_marker += 1
+                    else:
+                        multiple_frames_no_marker == True
+                        
+                    # if there have been ten frames with no marker consistently then drop the bird (lol)
+                    if num_frames_no_marker == 10 and multiple_frames_no_marker:
+                        self.noAruco = True
     
 
     def flush_cb(self, stream):
@@ -309,7 +323,7 @@ yuv_frame_2dArray_storage = deque()
 yuv_frame_storage = deque()
 
 
-def test_streaming():
+def loop_control():
     drone = StreamingExample()
     # Start the video stream
     drone.start()
@@ -330,4 +344,4 @@ def test_streaming():
 
 
 if __name__ == "__main__":
-    test_streaming()
+    loop_control()
