@@ -206,8 +206,6 @@ class StreamingExample:
                         self.z = tvec[0][0][2] # +z axis in frame is +z on drone
                         
                         
-                        
-                        
                         # ===== this section is the SME filter ======
                         
                         x_array.append(self.x)
