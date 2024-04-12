@@ -85,8 +85,7 @@ class StreamingExample:
         
         self.frame_grabbing_thread.start()
         print("frame grabbing started")
-        self.processing_thread.start()
-        print("processing started")
+        
 
     def stop(self):
         self.stop_processing = True
@@ -112,6 +111,7 @@ class StreamingExample:
 
     # this function grabs the frames and drops them into a deque object for the processing thread
     def yuv_frame_grabbing(self):
+        thread_not_started = True
         while self.running:
             try:
                 yuv_frame = self.frame_queue.get(timeout=0.1)
@@ -119,15 +119,26 @@ class StreamingExample:
                 continue
 
             # this section adds the frames to a deque object so that we can access the frames independent of this thread when we need to
+            
+            # unatlered yuv frame with all info attached added to double ended queue
             yuv_frame_storage.append(yuv_frame)
+            
+            # yuv frame converted to 2d array added to double ended queue
             yuv_2d_array = yuv_frame.as_ndarray()
             yuv_frame_2dArray_storage.append(yuv_2d_array)
-            if self.frame_count < 10:
+            
+            # conditionals for 
+            if self.frame_count < 30:
                 self.frame_count += 1
+                if self.frame_count >= 28 and thread_not_started:
+                    self.processing_thread.start()
+                    print("processing started")
+                    thread_not_started = False
             else:
+                # pop old frames off
                 yuv_frame_2dArray_storage.popleft()
                 yuv_frame_storage.popleft()
-
+                
             yuv_frame.unref()
 
 
@@ -137,8 +148,6 @@ class StreamingExample:
         parameters = aruco.DetectorParameters()
         
         # thes values are for validating that there has been no aruco sighting
-        multiple_frames_no_marker = False
-        num_frames_no_marker = 0
 
         while True:
 
@@ -146,7 +155,7 @@ class StreamingExample:
                 print("told to stop processing")
                 break
             
-            if len(yuv_frame_storage) >= 5 and len(yuv_frame_2dArray_storage) >= 5:
+            if yuv_frame_storage is not None:
 
                 # variables for image processing
                 k = np.array([[996.80114623, 0., 690.13286978],
@@ -154,7 +163,7 @@ class StreamingExample:
                             [0., 0., 1.]])
                 
                 d = np.array([0.01849482, 0.01653952, -0.0063708, 0.0083632, -0.21739897])
-
+                                
                 # this creates the flag that is passed into the following lines that is used for bgr conversion                
                 cv2_cvt_color_flag = {
                 olympe.VDEF_I420: cv2.COLOR_YUV2BGR_I420,
@@ -195,17 +204,8 @@ class StreamingExample:
                         self.y = gain*tvec[0][0][0] # +x axis in frame is +y on drone
                         self.x = -1*gain*tvec[0][0][1] # -y axis in frame is +x on drone
                         self.z = tvec[0][0][2] # +z axis in frame is +z on drone
-                    multiple_frames_no_marker = False
-                    num_frames_no_marker = 0
-                else:
-                    if multiple_frames_no_marker == True:
-                        num_frames_no_marker += 1
-                    else:
-                        multiple_frames_no_marker == True
-                        
-                    # if there have been ten frames with no marker consistently then drop the bird (lol)
-                    if num_frames_no_marker == 10 and multiple_frames_no_marker:
-                        self.noAruco = True
+                # else:
+                #     self.noAruco = True
     
 
     def flush_cb(self, stream):
@@ -252,11 +252,13 @@ class StreamingExample:
         temp_y = 0
         temp_z = 0
         
-        yaw_tol = 3
-        xy_tol = 0.02
-        z_min = 0.1
+        yaw_tol = 4
+        xy_tol = 0.01
+        z_min = 0.5
                 
         while True:
+            
+            print("no aruco?  ", self.noAruco)
             
             if np.rad2deg(self.yaw) < yaw_tol  and self.x < xy_tol and self.y < xy_tol and self.z < z_min:
                 print("all landing criteria met")
@@ -276,7 +278,7 @@ class StreamingExample:
                 temp_z = 0
                 print("correcting yaw")
                 
-            elif self.x > xy_tol and self.x > xy_tol:
+            elif self.x > xy_tol or self.x > xy_tol:
                 temp_x = self.x
                 temp_y = self.y
                 
@@ -296,17 +298,20 @@ class StreamingExample:
             
             print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
             
-            gain_yaw = 1.5
+            gain_yaw = 1
             gain_gaz = 0.35
             
             flag = 0
-            roll = int(  15*(temp_y)  )
-            pitch = int(  15*(temp_x)  )
-            yaw = int(  50*(gain_yaw*(temp_yaw))  )
+            roll = int(  -25*(temp_y)  )
+            pitch = int(  -25*(temp_x)  )
+            yaw = int(  75*(gain_yaw*(temp_yaw))  )
             gaz = int(  -25*gain_gaz*temp_z  )
             timestampAndSeqNum = 0
             
-            print("yaw input: ", yaw, "temp yaw: ", temp_yaw)
+            print("yaw input: ", yaw)
+            print("outputs : \nroll: ", roll)
+            print("pitch: ", pitch)
+            print("gaz: ", gaz)
             self.drone(PCMD(flag, roll, pitch, yaw, gaz, timestampAndSeqNum, _timeout=5)).wait()
         
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
