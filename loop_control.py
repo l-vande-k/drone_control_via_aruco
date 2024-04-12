@@ -9,8 +9,6 @@ import numpy as np
 import cv2
 import cv2.aruco as aruco
 
-# this is a test
-
 import olympe
 from olympe.messages.ardrone3.Piloting import TakeOff, Landing
 from olympe.messages.ardrone3.Piloting import moveBy
@@ -166,7 +164,7 @@ class StreamingExample:
                 if len(corners) > 0:
                     for i in range(0, len(ids)):
                         # Estimate pose of each marker and return the values rvec and tvec---(different from those of camera coefficients)
-                        rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners[i], 0.02, k, d, markerLength=50.0)
+                        rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners[i], 0.02, k, d)
                         rot, _ = cv2.Rodrigues(rvec)
 
                         sy = math.sqrt(rot[0,0] * rot[0,0] +  rot[1,0] * rot[1,0])
@@ -228,8 +226,13 @@ class StreamingExample:
             | (TakeOff() & FlyingStateChanged(state="hovering"))
         ).wait()
 
-        print("x&y: ", 2*self.x, ", ", 2*self.y)
-        self.drone(moveBy(2*self.x, 2*self.y, 0, self.yaw, _timeout=20)).wait()
+        while True:
+            if np.rad2deg(self.yaw) < 5:
+                break
+            print("yaw: ", np.rad2deg(self.yaw), "\n")
+            print("x&y: ", 2*self.x, ", ", 2*self.y, "\n")
+            self.drone(moveBy(self.x, self.y, 0, self.yaw, _timeout=20)).wait()
+            
 
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
 

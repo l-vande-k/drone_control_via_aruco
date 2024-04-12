@@ -164,7 +164,7 @@ class StreamingExample:
                 if len(corners) > 0:
                     for i in range(0, len(ids)):
                         # Estimate pose of each marker and return the values rvec and tvec---(different from those of camera coefficients)
-                        rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners[i], 0.02, k, d, markerLength=50.0)
+                        rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners[i], 0.02, k, d)
                         rot, _ = cv2.Rodrigues(rvec)
 
                         sy = math.sqrt(rot[0,0] * rot[0,0] +  rot[1,0] * rot[1,0])
