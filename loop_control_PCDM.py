@@ -11,11 +11,7 @@ import cv2
 import cv2.aruco as aruco
 
 import olympe
-<<<<<<< HEAD
 from olympe.messages.ardrone3.Piloting import TakeOff, Landing, PCMD
-=======
-from olympe.messages.ardrone3.Piloting import TakeOff, Landing
->>>>>>> 5c99fb4886c92dcaae8338ba054c16ac872621ef
 from olympe.messages.ardrone3.Piloting import moveBy
 from olympe.messages.ardrone3.PilotingState import FlyingStateChanged
 import olympe.messages.gimbal as gimbal
@@ -139,27 +135,18 @@ class StreamingExample:
         
         dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50) # the aruco ID must be below 50
         parameters = aruco.DetectorParameters()
-<<<<<<< HEAD
         
         # thes values are for validating that there has been no aruco sighting
         multiple_frames_no_marker = False
         num_frames_no_marker = 0
-=======
->>>>>>> 5c99fb4886c92dcaae8338ba054c16ac872621ef
 
         while True:
 
             if self.stop_processing == True:
-<<<<<<< HEAD
                 print("told to stop processing")
                 break
             
             if len(yuv_frame_storage) >= 5 and len(yuv_frame_2dArray_storage) >= 5:
-=======
-                break
-            
-            if self.frame_count > 9:
->>>>>>> 5c99fb4886c92dcaae8338ba054c16ac872621ef
 
                 # variables for image processing
                 k = np.array([[996.80114623, 0., 690.13286978],
@@ -208,7 +195,6 @@ class StreamingExample:
                         self.y = gain*tvec[0][0][0] # +x axis in frame is +y on drone
                         self.x = -1*gain*tvec[0][0][1] # -y axis in frame is +x on drone
                         self.z = tvec[0][0][2] # +z axis in frame is +z on drone
-<<<<<<< HEAD
                     multiple_frames_no_marker = False
                     num_frames_no_marker = 0
                 else:
@@ -220,14 +206,6 @@ class StreamingExample:
                     # if there have been ten frames with no marker consistently then drop the bird (lol)
                     if num_frames_no_marker == 10 and multiple_frames_no_marker:
                         self.noAruco = True
-=======
-
-
-                        #print("tvec: ", tvec)
-                        #print("x&y: ", self.x, ", ", self.y)
-                else:
-                    self.noAruco = True
->>>>>>> 5c99fb4886c92dcaae8338ba054c16ac872621ef
     
 
     def flush_cb(self, stream):
@@ -265,18 +243,13 @@ class StreamingExample:
         ).wait()
         
         # take a 360 pan of the room for post processing
-<<<<<<< HEAD
         self.drone(moveBy(0, 0, 0, np.deg2rad(-30), _timeout=20)).wait()
-=======
-        self.drone(moveBy(0, 0, 0, 2*math.pi, _timeout=20)).wait()
->>>>>>> 5c99fb4886c92dcaae8338ba054c16ac872621ef
 
     def correct_land(self):
         
         temp_yaw = 0
         temp_x = 0
         temp_y = 0
-<<<<<<< HEAD
         temp_z = 0
         
         yaw_tol = 3
@@ -335,66 +308,6 @@ class StreamingExample:
             
             print("yaw input: ", yaw, "temp yaw: ", temp_yaw)
             self.drone(PCMD(flag, roll, pitch, yaw, gaz, timestampAndSeqNum, _timeout=5)).wait()
-=======
-
-        xy_tol = 0.02
-        gain = 4
-        yaw_tol = 3
-        z_min = 0.1
-        
-        LOWER = True
-        
-        print("before while loop")
-        
-        while True:
-            
-            print("inside while")
-            
-            # conditional to break to landing
-            if np.rad2deg(self.yaw) < yaw_tol and self.x < xy_tol and self.y < xy_tol and self.z < z_min:
-                
-                print("inside first condition")
-                break
-            
-            if self.noAruco:
-                break
-            
-            # correctional conditions, we don't want to over correct or worry about things that are close enough
-            
-            if np.rad2deg(self.yaw) < yaw_tol:
-                temp_yaw = 0
-            else:
-                temp_yaw = self.yaw
-            
-            if self.x < xy_tol and self.yaw > yaw_tol:
-                temp_x = 0
-            else:
-                temp_x = self.x
-                
-            if self.y < xy_tol and np.rad2deg(self.yaw) > yaw_tol:
-                temp_y = 0
-            else:
-                temp_y = -self.y
-                
-                
-            
-            # ============= measurements sent to movement commands =============
-            print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
-            
-            # ============= movement commands =============
-            
-            within_xy_gain_constraints = (self.x < xy_tol*gain and self.y < xy_tol*gain)
-            
-            if self.z < 0.25:
-                LOWER = False
-                
-            if (np.rad2deg(self.yaw) < yaw_tol and within_xy_gain_constraints ) and self.z > 0.25 and LOWER:
-                self.drone(moveBy(0, 0, self.z/2.5, 0, _timeout=20)).wait()
-                print("lowering drone")
-            else:
-                self.drone(moveBy(temp_x, temp_y, 0, temp_yaw, _timeout=20)).wait()
-                print("correcting in horizontal plane")
->>>>>>> 5c99fb4886c92dcaae8338ba054c16ac872621ef
         
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
@@ -410,18 +323,11 @@ def loop_control():
     drone = StreamingExample()
     # Start the video stream
     drone.start()
-<<<<<<< HEAD
     
     drone.move_gimbal(-90)
 
     # Perform some live video processing while the drone is flying
     drone.takeoff_spin()
-=======
-
-    # Perform some live video processing while the drone is flying
-    drone.takeoff_spin()
-    drone.move_gimbal(-90)
->>>>>>> 5c99fb4886c92dcaae8338ba054c16ac872621ef
     
     print("landing sequence started")
     
