@@ -293,7 +293,7 @@ class StreamingExample:
         ).wait()
         
         # take a 360 pan of the room for post processing
-        # self.drone(moveBy(0, 0, 0, np.deg2rad(360), _timeout=20)).wait()
+        self.drone(moveBy(0, 0, 0, np.deg2rad(360), _timeout=20)).wait()
 
     def correct_land(self):
         
@@ -306,41 +306,38 @@ class StreamingExample:
         temp_y = 0
         temp_z = 0
         
-        yaw_tol = 4
-        xy_tol = 10 / 1000      # in mm
+        yaw_tol = 5
+        xy_tol = 0.07     # in mm
         z_min = 0.25
+        
+        print(xy_tol)
         
         while True:
             
             # print("no aruco?  ", self.noAruco)
             
-            if abs(np.rad2deg(self.yaw)) < yaw_tol  and self.x < xy_tol and self.y < xy_tol and self.z < z_min:
+            if abs(np.rad2deg(self.yaw)) < yaw_tol  and abs(self.x) < xy_tol and abs(self.y) < xy_tol and abs(self.z) < z_min:
                 print("all landing criteria met")
                 break
             if self.noAruco:
                 print("no aruco found")
                 break
-            
-            
-            # correctional conditions, we don't want to over correct or worry about things that are close enough
-            
+                        
             if abs(np.rad2deg(self.yaw)) > yaw_tol:
                 temp_yaw = self.yaw
-                # the rest are zero. we aren't changing those. just focus on yaw
+
                 temp_x = 0
                 temp_y = 0
                 temp_z = 0
                 print("correcting yaw")
-                
-            elif self.x > xy_tol or self.x > xy_tol:
+            elif abs(self.x) > xy_tol and abs(self.y) > xy_tol:
                 temp_x = self.x
                 temp_y = self.y
                 
                 temp_z = 0
                 temp_yaw = 0
-                
                 print("correcting x&y")
-                
+            
             # elif self.z > z_min:
             #     temp_z = self.z
                 
@@ -352,21 +349,11 @@ class StreamingExample:
             
             print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw))
             print("x: ", temp_x, ", y: ", temp_y, ", z: " , temp_z, ", yaw: ", np.rad2deg(temp_yaw))
-            if (temp_x > 0):
-                print("go forward")
-            elif(temp_x < 0):
-                print("go backwards")
+            print("\n")
             
-            if (temp_y > 0):
-                print("go right")
-            elif(temp_y < 0):
-                print("go left")
-
-            print("========== \n\n")
-            
-            self.drone(moveBy(temp_x, temp_y, 0, temp_yaw, _timeout=10)).wait()
+            self.drone(moveBy(temp_x, temp_y, 0, temp_yaw, _timeout=3)).wait()
         
-        # self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
+        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
 
 
