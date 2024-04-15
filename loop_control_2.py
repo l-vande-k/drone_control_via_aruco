@@ -6,6 +6,8 @@ import uuid
 import threading
 import numpy as np
 import time
+import pickle
+
 
 import cv2
 import cv2.aruco as aruco
@@ -34,8 +36,6 @@ class StreamingExample:
     x = 0
     y = 0
     z = 0
-
-    noAruco = False
 
     def __init__(self):
         # Create the olympe.Drone object from its IP address
@@ -121,11 +121,11 @@ class StreamingExample:
             # this section adds the frames to a deque object so that we can access the frames independent of this thread when we need to
             
             # unatlered yuv frame with all info attached added to double ended queue
-            yuv_frame_storage.append(yuv_frame)
+            yuv_frame_cache.append(yuv_frame)
             
             # yuv frame converted to 2d array added to double ended queue
             yuv_2d_array = yuv_frame.as_ndarray()
-            yuv_frame_2dArray_storage.append(yuv_2d_array)
+            yuv_frame_2dArray_cache.append(yuv_2d_array)
             
             # conditionals for 
             if self.frame_count < 30:
@@ -136,47 +136,67 @@ class StreamingExample:
                     thread_not_started = False
             else:
                 # pop old frames off
-                yuv_frame_2dArray_storage.popleft()
-                yuv_frame_storage.popleft()
+                yuv_frame_2dArray_cache.popleft()
+                yuv_frame_cache.popleft()
                 
             yuv_frame.unref()
 
+    noAruco = True
 
     def frame_processing(self):
         
         dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50) # the aruco ID must be below 50
         parameters = aruco.DetectorParameters()
         
-        # thes values are for validating that there has been no aruco sighting
-
+        # this grabs the color flag index from memory
+        color_flag_index = None
+        file_path = "/home/levi/Documents/drone_testing/drone_control_via_aruco/image_processing_variables/color_flag_index.pickle"
+        with open(file_path, 'rb') as file:
+            # Deserialize and retrieve the variable from the file
+            color_flag_index = pickle.load(file)
+    
         while True:
-
+            
+            # this ends the thread with a bool
             if self.stop_processing == True:
                 print("told to stop processing")
                 break
             
-            if yuv_frame_storage is not None:
+            if yuv_frame_cache is not None and len(yuv_frame_cache) > 5 and yuv_frame_2dArray_cache is not None and len(yuv_frame_2dArray_cache) > 5:
 
                 # variables for image processing
-                k = np.array([[996.80114623, 0., 690.13286978],
-                            [0., 961.38301889, 361.68868703],
+                k = np.array([[921.3151587, 0., 666.84963128],
+                            [0., 921.88843465, 354.19572665],
                             [0., 0., 1.]])
                 
-                d = np.array([0.01849482, 0.01653952, -0.0063708, 0.0083632, -0.21739897])
-                                
-                # this creates the flag that is passed into the following lines that is used for bgr conversion                
+                d = np.array([1.13291286e-02, 3.14439185e-01, -5.19291075e-03, -2.07237003e-04, -5.95381063e-01])
+                
+                # this creates the flag that is passed into the following lines that is used for bgr conversion
+                
+                # print('yuv_frame_cache')
+                #print(yuv_frame_cache)
+                # print(yuv_frame_cache[-2].format())
+                # print(len(yuv_frame_cache), "\n\n")
+                
+                #print("olympe.VDEF_I420", olympe.VDEF_I420)
+                #print("olympe.VDEF_NV12", olympe.VDEF_NV12)
+                #print("cv2.COLOR_YUV2BGR_I420", cv2.COLOR_YUV2BGR_I420)
+                #print("cv2.COLOR_YUV2BGR_NV12", cv2.COLOR_YUV2BGR_NV12)
+                
                 cv2_cvt_color_flag = {
                 olympe.VDEF_I420: cv2.COLOR_YUV2BGR_I420,
                 olympe.VDEF_NV12: cv2.COLOR_YUV2BGR_NV12,
-                }[yuv_frame_storage[-2].format()]
+                }[color_flag_index]
+
 
                 # yuv --> bgr --> gray
-                bgr_frame = cv2.cvtColor(yuv_frame_2dArray_storage[-2], cv2_cvt_color_flag)
+                bgr_frame = cv2.cvtColor(yuv_frame_2dArray_cache[-2], cv2_cvt_color_flag)
                 gray_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2GRAY)
                 
                 corners, ids, _ = cv2.aruco.detectMarkers(gray_frame, dictionary, parameters=parameters)
                 
                 if len(corners) > 0:
+                    self.noAruco = False
                     for i in range(0, len(ids)):
                         # Estimate pose of each marker and return the values rvec and tvec---(different from those of camera coefficients)
                         rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners[i], 0.02, k, d)
@@ -194,37 +214,45 @@ class StreamingExample:
                             x = math.atan2(-rot[1,2], rot[1,1])
                             y = math.atan2(-rot[2,0], sy)
                             z = 0
-                    
+                        
                         eulers = np.array([x, y, z])
                         
                         # these measurements aren't accurate, they need to be enlarged
-                        gain = 2
+                        gain = 1.0/0.4275
                         
                         self.yaw = eulers[2]
                         self.y = gain*tvec[0][0][0] # +x axis in frame is +y on drone
                         self.x = -1*gain*tvec[0][0][1] # -y axis in frame is +x on drone
-                        self.z = tvec[0][0][2] # +z axis in frame is +z on drone
+                        self.z = gain*tvec[0][0][2] # +z axis in frame is +z on drone
                         
                         
                         # ===== this section is the SME filter ======
                         
-                        x_array.append(self.x)
-                        y_array.append(self.y)
-                        z_array.append(self.z)
-                        yaw_array.append(self.yaw)
+                        # x_array.append(self.x)
+                        # y_array.append(self.y)
+                        # z_array.append(self.z)
+                        # yaw_array.append(self.yaw)
                         
-                        if len(x_array) <= 30:
-                            continue
-                        else:
-                            x_array.popleft()
-                            y_array.popleft()
-                            z_array.popleft()
-                            yaw_array.popleft()
+                        # if len(x_array) <= 5:
+                        #     continue
+                        # else:
+                        #     x_array.popleft()
+                        #     y_array.popleft()
+                        #     z_array.popleft()
+                        #     yaw_array.popleft()
                             
-                        self.x = np.average(x_array)
-                        self.y = np.average(y_array)
-                        self.z = np.average(z_array)
-                        self.yaw = np.average(yaw_array)
+                        # self.x = np.average(x_array)
+                        # self.y = np.average(y_array)
+                        # self.z = np.average(z_array)
+                        # self.yaw = np.average(yaw_array)
+                        
+                        
+                        # this prints the x values
+                        
+                        # print("x: ", self.x)
+                        # print("y: ", self.y)
+                        # print("z: ", self.z)
+                        # print("yaw: ", np.rad2deg(self.yaw), "\n\n")
 
                 # else:
                 #     self.noAruco = True
@@ -265,9 +293,13 @@ class StreamingExample:
         ).wait()
         
         # take a 360 pan of the room for post processing
-        self.drone(moveBy(0, 0, 0, np.deg2rad(375), _timeout=20)).wait()
+        # self.drone(moveBy(0, 0, 0, np.deg2rad(360), _timeout=20)).wait()
 
     def correct_land(self):
+        
+        while True:
+            if not self.noAruco:
+                break
         
         temp_yaw = 0
         temp_x = 0
@@ -275,14 +307,14 @@ class StreamingExample:
         temp_z = 0
         
         yaw_tol = 4
-        xy_tol = 0.01
+        xy_tol = 10 / 1000      # in mm
         z_min = 0.25
-                
+        
         while True:
             
-            print("no aruco?  ", self.noAruco)
+            # print("no aruco?  ", self.noAruco)
             
-            if np.rad2deg(self.yaw) < yaw_tol  and self.x < xy_tol and self.y < xy_tol and self.z < z_min:
+            if abs(np.rad2deg(self.yaw)) < yaw_tol  and self.x < xy_tol and self.y < xy_tol and self.z < z_min:
                 print("all landing criteria met")
                 break
             if self.noAruco:
@@ -292,7 +324,7 @@ class StreamingExample:
             
             # correctional conditions, we don't want to over correct or worry about things that are close enough
             
-            if np.rad2deg(self.yaw) > yaw_tol:
+            if abs(np.rad2deg(self.yaw)) > yaw_tol:
                 temp_yaw = self.yaw
                 # the rest are zero. we aren't changing those. just focus on yaw
                 temp_x = 0
@@ -309,29 +341,39 @@ class StreamingExample:
                 
                 print("correcting x&y")
                 
-            elif self.z > z_min:
-                temp_z = self.z
+            # elif self.z > z_min:
+            #     temp_z = self.z
                 
-                temp_x = 0
-                temp_y = 0
-                temp_yaw = 0
+            #     temp_x = 0
+            #     temp_y = 0
+            #     temp_yaw = 0
                 
-                print("correcting z")
+            #     print("correcting z")
             
-            print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
-            print("x: ", temp_x, ", y: ", temp_y, ", z: " , temp_z, ", yaw: ", np.rad2deg(temp_yaw), "\n")
-        
+            print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw))
+            print("x: ", temp_x, ", y: ", temp_y, ", z: " , temp_z, ", yaw: ", np.rad2deg(temp_yaw))
+            if (temp_x > 0):
+                print("go forward")
+            elif(temp_x < 0):
+                print("go backwards")
             
-            self.drone(moveBy(temp_x, temp_y, temp_z/2.5, temp_yaw, _timeout=20)).wait()
+            if (temp_y > 0):
+                print("go right")
+            elif(temp_y < 0):
+                print("go left")
+
+            print("========== \n\n")
+            
+            self.drone(moveBy(temp_x, temp_y, 0, temp_yaw, _timeout=10)).wait()
         
-        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
+        # self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
 
 
 
 # variables used in threads
-yuv_frame_2dArray_storage = deque()
-yuv_frame_storage = deque()
+yuv_frame_2dArray_cache = deque()
+yuv_frame_cache = deque()
 
 x_array = deque()
 y_array = deque()
@@ -344,16 +386,18 @@ def loop_control():
     # Start the video stream
     drone.start()
     
-    drone.move_gimbal(-90)
-
     # Perform some live video processing while the drone is flying
     drone.takeoff_spin()
     
-    print("landing sequence started")
+    drone.move_gimbal(-90)
     
+    print("landing sequence started")
+
+    # this runs the P controlled landing method
     drone.correct_land()
 
     drone.move_gimbal(0)
+    
     # Stop the video stream
     drone.stop()
 
