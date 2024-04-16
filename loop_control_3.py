@@ -381,21 +381,21 @@ class StreamingExample:
                 print("correcting x&y with PI control")
             
             
-            # print("___CHECKING BOOLS___")
-            # print("yaw is good: ", abs(np.rad2deg(self.yaw)) < yaw_tol)
-            # print("x is good: ", abs(self.x) < x_y_lower_tol)
-            # print("y is good: ", abs(self.y) < x_y_lower_tol)
-            # print("z is good: ", abs(self.z) < z_min)
-            # print("\n")
+            print("___CHECKING BOOLS___")
+            print("yaw is good: ", abs(np.rad2deg(self.yaw)) < yaw_tol)
+            print("x is good: ", abs(self.x) < x_y_lower_tol)
+            print("y is good: ", abs(self.y) < x_y_lower_tol)
+            print("z is good: ", abs(self.z) < z_min)
+            print("\n")
             
-            # print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw))
-            # print("x: ", temp_x, ", y: ", temp_y, ", z: " , temp_z, ", yaw: ", np.rad2deg(temp_yaw))
+            print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw))
+            print("x: ", temp_x, ", y: ", temp_y, ", z: " , temp_z, ", yaw: ", np.rad2deg(temp_yaw))
                         
-            # print("\n================================\n")
+            print("\n================================\n")
             
-            # self.drone(moveBy(temp_x, temp_y, temp_z, temp_yaw, _timeout=5)).wait()
+            self.drone(moveBy(temp_x, temp_y, temp_z, temp_yaw, _timeout=5)).wait()
         
-        # self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
+        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
 
 
@@ -465,9 +465,9 @@ def loop_control():
     drone.start()
     
     # Perform some live video processing while the drone is flying
-    # drone.takeoff_spin()
+    drone.takeoff_spin()
     
-    drone.move_gimbal(0)
+    drone.move_gimbal(-90)
     
     print("landing sequence started")
 
