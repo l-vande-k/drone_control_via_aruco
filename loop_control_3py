@@ -470,7 +470,6 @@ yaw_SME_array = array('f')
 time_array = array('f')
 
 
-
 def loop_control():
     drone = StreamingExample()
     # Start the video stream
