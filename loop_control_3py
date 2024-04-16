@@ -66,7 +66,7 @@ class StreamingExample:
 
         '''
         You can record the video stream from the drone if you plan to do some post processing.
-        This is currently turned off... it stops some errors
+        This is currently turned off... it stops some error messages
         '''
         # self.drone.streaming.set_output_files(
         #     video=os.path.join(self.recorded_video, "streaming.mp4"),
@@ -74,6 +74,7 @@ class StreamingExample:
         # )
 
         # Setup your callback functions to do some live video processing
+        # I don't know what these do
         self.drone.streaming.set_callbacks(
             raw_cb=self.yuv_frame_cb,
             start_cb=self.start_cb,
@@ -101,14 +102,9 @@ class StreamingExample:
         assert self.drone.disconnect()
 
     def yuv_frame_cb(self, yuv_frame):
-        """
-        This function will be called by Olympe for each decoded YUV frame.
-
-            :type yuv_frame: olympe.VideoFrame
-        """
+        # This function will be called by Olympe for each decoded YUV frame.
         yuv_frame.ref()
         self.frame_queue.put_nowait(yuv_frame)
-
 
 
     # this function grabs the frames and drops them into a deque object for the processing thread
