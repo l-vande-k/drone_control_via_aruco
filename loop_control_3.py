@@ -7,7 +7,7 @@ import threading
 import numpy as np
 import time
 import pickle
-import array
+from array import *
 import csv
 
 
@@ -38,6 +38,8 @@ class StreamingExample:
     x = 0
     y = 0
     z = 0
+    
+    unique_filename = ""
 
     def __init__(self):
         # Create the olympe.Drone object from its IP address
@@ -45,8 +47,8 @@ class StreamingExample:
 
 
         # this creates a folder with a unique name in a known directory location
-        unique_filename = str(uuid.uuid4())
-        self.recorded_video = "/home/levi/Documents/drone_testing/drone_vids/" + unique_filename
+        self.unique_filename = str(uuid.uuid4())
+        self.recorded_video = "/home/levi/Documents/drone_testing/drone_vids/" + self.unique_filename
         os.mkdir(self.recorded_video)
         #print(f"Olympe streaming example output dir: {self.recorded_video}")
 
@@ -140,7 +142,7 @@ class StreamingExample:
             yuv_frame.unref()
 
     noAruco = True
-
+    
     def frame_processing(self):
         
         dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50) # the aruco ID must be below 50
@@ -156,7 +158,7 @@ class StreamingExample:
         
         # start the timer for tracking time stamps for graphing !!!!!!
         
-        # start_time = time.time()
+        start_time = time.time()
 
         while True:
             
@@ -220,46 +222,38 @@ class StreamingExample:
                         
                         # get the time stamp and add it to the time array
                         
-                        # time_now = time.time()
-                        # time_stamp = start_time - time_now
-                        # time_array.append(time_stamp)
+                        time_now = time.time()
+                        time_stamp = time_now - start_time
+                        time_array.append(time_stamp)
                         
                         
                         # ===== this section is the SME filter ======
                         
-                        # x_deque.append(self.x)
-                        # y_deque.append(self.y)
-                        # z_deque.append(self.z)
-                        # yaw_deque.append(self.yaw)
+                        x_deque.append(self.x)
+                        y_deque.append(self.y)
+                        z_deque.append(self.z)
+                        yaw_deque.append(self.yaw)
                         
-                        # if len(x_deque) <= 5:
-                        #     continue
-                        # else:
-                        #     x_deque.popleft()
-                        #     y_deque.popleft()
-                        #     z_deque.popleft()
-                        #     yaw_deque.popleft()
+                        if len(x_deque) <= 5:
+                            continue
+                        else:
+                            x_deque.popleft()
+                            y_deque.popleft()
+                            z_deque.popleft()
+                            yaw_deque.popleft()
                             
-                        # self.x = np.average(x_deque)
-                        # self.y = np.average(y_deque)
-                        # self.z = np.average(z_deque)
-                        # self.yaw = np.average(yaw_deque)
+                        self.x = np.average(x_deque)
+                        self.y = np.average(y_deque)
+                        self.z = np.average(z_deque)
+                        self.yaw = np.average(yaw_deque)
                         
-                        
-                        # # this prints the x values
-                        
-                        # print("x: ", self.x)
-                        # print("y: ", self.y)
-                        # print("z: ", self.z)
-                        # print("yaw: ", np.rad2deg(self.yaw), "\n\n")
-                        
-                        # # for processing later
+                        # for processing later
 
-                        # x_SME_array.append(self.x)
-                        # y_SME_array.append(self.y)
-                        # z_SME_array.append(self.z)
-                        # yaw_SME_array.append(self.yaw)
-
+                        x_SME_array.append(self.x)
+                        y_SME_array.append(self.y)
+                        z_SME_array.append(self.z)
+                        yaw_SME_array.append(self.yaw)
+                        
                 else:
                     self.noAruco = True
     
@@ -387,17 +381,17 @@ class StreamingExample:
                 print("correcting x&y with PI control")
             
             
-            print("___CHECKING BOOLS___")
-            print("yaw is good: ", abs(np.rad2deg(self.yaw)) < yaw_tol)
-            print("x is good: ", abs(self.x) < x_y_lower_tol)
-            print("y is good: ", abs(self.y) < x_y_lower_tol)
-            print("z is good: ", abs(self.z) < z_min)
-            print("\n")
+            # print("___CHECKING BOOLS___")
+            # print("yaw is good: ", abs(np.rad2deg(self.yaw)) < yaw_tol)
+            # print("x is good: ", abs(self.x) < x_y_lower_tol)
+            # print("y is good: ", abs(self.y) < x_y_lower_tol)
+            # print("z is good: ", abs(self.z) < z_min)
+            # print("\n")
             
-            print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw))
-            print("x: ", temp_x, ", y: ", temp_y, ", z: " , temp_z, ", yaw: ", np.rad2deg(temp_yaw))
-            
-            print("\n================================\n")
+            # print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw))
+            # print("x: ", temp_x, ", y: ", temp_y, ", z: " , temp_z, ", yaw: ", np.rad2deg(temp_yaw))
+                        
+            # print("\n================================\n")
             
             # self.drone(moveBy(temp_x, temp_y, temp_z, temp_yaw, _timeout=5)).wait()
         
@@ -406,42 +400,39 @@ class StreamingExample:
 
 
 
-    def write_csv(self):
+    def write_csv(self, unique_filename):
         rows = zip(time_array, x_array, y_array, z_array, yaw_array)
         
-        unique_filename = str(uuid.uuid4())
-
         # Specify the CSV file path
         os.mkdir('/home/levi/Documents/drone_testing/drone_csv/' + unique_filename)
-        csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + 'no_filter.csv'
-        
+        csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + '/no_filter.csv'
         
         # Open the CSV file in write mode
         with open(csv_file_path, 'w', newline='') as csvfile:
             # Create a CSV writer object
             csv_writer = csv.writer(csvfile)
+            
+            column_titles = ['Time', 'X', 'Y', 'Z', 'Yaw']
+            csv_writer.writerow(column_titles)
 
             # Write the rows (arrays side by side) to the CSV file
             csv_writer.writerows(rows)
             
-    def write_csv_SME(self):
         rows = zip(time_array, x_SME_array, y_SME_array, z_SME_array, yaw_SME_array)
-        
-        unique_filename = str(uuid.uuid4())
-
-        # Specify the CSV file path
-        os.mkdir('/home/levi/Documents/drone_testing/drone_csv/' + unique_filename)
-        csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + 'SME_filter.csv'
-        
+            
+        csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + '/SME_filter.csv'
         
         # Open the CSV file in write mode
         with open(csv_file_path, 'w', newline='') as csvfile:
             # Create a CSV writer object
             csv_writer = csv.writer(csvfile)
+            
+            column_titles = ['Time', 'X', 'Y', 'Z', 'Yaw']
+            csv_writer.writerow(column_titles)
 
             # Write the rows (arrays side by side) to the CSV file
             csv_writer.writerows(rows)
-        
+    
 
 # variables used in threads
 yuv_frame_2dArray_cache = deque()
@@ -476,7 +467,7 @@ def loop_control():
     # Perform some live video processing while the drone is flying
     # drone.takeoff_spin()
     
-    drone.move_gimbal(-90)
+    drone.move_gimbal(0)
     
     print("landing sequence started")
 
@@ -488,8 +479,7 @@ def loop_control():
     # Stop the video stream
     drone.stop()
     
-    drone.write_csv()
-    drone.write_csv_SME()
+    drone.write_csv(drone.unique_filename)
 
     print("done")
 
