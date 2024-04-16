@@ -247,15 +247,15 @@ class StreamingExample:
                         # self.yaw = np.average(yaw_array)
                         
                         
-                        # this prints the x values
+                        # # this prints the x values
                         
                         # print("x: ", self.x)
                         # print("y: ", self.y)
                         # print("z: ", self.z)
                         # print("yaw: ", np.rad2deg(self.yaw), "\n\n")
 
-                # else:
-                #     self.noAruco = True
+                else:
+                    self.noAruco = True
     
 
     def flush_cb(self, stream):
@@ -301,16 +301,16 @@ class StreamingExample:
             if not self.noAruco:
                 break
         
-        temp_yaw = 0
+        temp_yaw = 0            # in rad
         temp_x = 0
         temp_y = 0
         temp_z = 0
         
-        yaw_tol = 5
-        xy_tol = 0.07     # in mm
-        z_min = 0.25
+        yaw_tol = 5             # in degrees
+        xy_tol = 4    / 1000    # in mm
+        z_min = 0.75            # in m
         
-        print(xy_tol)
+        x_y_min = 50  / 1000    # in mm
         
         while True:
             
@@ -322,7 +322,10 @@ class StreamingExample:
             if self.noAruco:
                 print("no aruco found")
                 break
-                        
+            
+            
+            # pose adjustments
+            
             if abs(np.rad2deg(self.yaw)) > yaw_tol:
                 temp_yaw = self.yaw
 
@@ -330,28 +333,48 @@ class StreamingExample:
                 temp_y = 0
                 temp_z = 0
                 print("correcting yaw")
-            elif abs(self.x) > xy_tol and abs(self.y) > xy_tol:
+                
+            elif abs(self.x) > x_y_min or abs(self.y) > x_y_min:
                 temp_x = self.x
                 temp_y = self.y
                 
                 temp_z = 0
                 temp_yaw = 0
                 print("correcting x&y")
+                
+            elif self.z > z_min:
+                    temp_z = self.z
+                    
+                    temp_x = 0
+                    temp_y = 0
+                    temp_yaw = 0
+                    print("correcting z")
+                    
+            elif abs(self.x) > xy_tol or abs(self.y) > xy_tol:
+                temp_x = self.x
+                temp_y = self.y
+                
+                temp_z = 0
+                temp_yaw = 0
+                print("correcting x&y")
+                    
             
-            # elif self.z > z_min:
-            #     temp_z = self.z
-                
-            #     temp_x = 0
-            #     temp_y = 0
-            #     temp_yaw = 0
-                
-            #     print("correcting z")
             
             print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw))
             print("x: ", temp_x, ", y: ", temp_y, ", z: " , temp_z, ", yaw: ", np.rad2deg(temp_yaw))
+            
+            print("___CHECKING BOOLS___")
+            print("yaw is good: ", abs(np.rad2deg(self.yaw)) < yaw_tol)
+            print("x is good: ", abs(self.x) < xy_tol)
+            print("y is good: ", abs(self.y) < xy_tol)
+            print("z is good: ", abs(self.z) < z_min)
             print("\n")
             
-            self.drone(moveBy(temp_x, temp_y, 0, temp_yaw, _timeout=3)).wait()
+            Kxy = 0.85
+            Kyaw = 0.85
+            Kz = 1/4
+            
+            self.drone(moveBy(Kxy*temp_x, Kxy*temp_y, Kz*temp_z, Kyaw*temp_yaw, _timeout=5)).wait()
         
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
