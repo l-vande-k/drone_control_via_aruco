@@ -6,6 +6,7 @@ import uuid
 import threading
 import numpy as np
 import time
+import pickle
 
 import cv2
 import cv2.aruco as aruco
@@ -147,6 +148,12 @@ class StreamingExample:
         dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50) # the aruco ID must be below 50
         parameters = aruco.DetectorParameters()
         
+        color_flag_index = None
+        file_path = "/home/levi/Documents/drone_testing/drone_control_via_aruco/image_processing_variables/color_flag_index.pickle"
+        with open(file_path, 'rb') as file:
+            # Deserialize and retrieve the variable from the file
+            color_flag_index = pickle.load(file)
+        
         # thes values are for validating that there has been no aruco sighting
 
         while True:
@@ -168,7 +175,7 @@ class StreamingExample:
                 cv2_cvt_color_flag = {
                 olympe.VDEF_I420: cv2.COLOR_YUV2BGR_I420,
                 olympe.VDEF_NV12: cv2.COLOR_YUV2BGR_NV12,
-                }[yuv_frame_storage[-2].format()]
+                }[color_flag_index]
 
                 # yuv --> bgr --> gray
                 bgr_frame = cv2.cvtColor(yuv_frame_2dArray_storage[-2], cv2_cvt_color_flag)
@@ -182,25 +189,18 @@ class StreamingExample:
                         rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners[i], 0.02, k, d)
                         rot, _ = cv2.Rodrigues(rvec)
 
+                        # getting yaw
+                        rot, _ = cv2.Rodrigues(rvec)
                         sy = math.sqrt(rot[0,0] * rot[0,0] +  rot[1,0] * rot[1,0])
-
                         singular = sy < 1e-6
-                    
                         if  not singular :
-                            x = math.atan2(rot[2,1] , rot[2,2])
-                            y = math.atan2(-rot[2,0], sy)
-                            z = math.atan2(rot[1,0], rot[0,0])
+                            self.yaw = math.atan2(rot[1,0], rot[0,0])
                         else :
-                            x = math.atan2(-rot[1,2], rot[1,1])
-                            y = math.atan2(-rot[2,0], sy)
-                            z = 0
-                    
-                        eulers = np.array([x, y, z])
+                            self.yaw = 0
                         
                         # these measurements aren't accurate, they need to be enlarged
                         gain = 2
                         
-                        self.yaw = eulers[2]
                         self.y = gain*tvec[0][0][0] # +x axis in frame is +y on drone
                         self.x = -1*gain*tvec[0][0][1] # -y axis in frame is +x on drone
                         self.z = tvec[0][0][2] # +z axis in frame is +z on drone
@@ -247,72 +247,126 @@ class StreamingExample:
 
     def correct_land(self):
         
-        temp_yaw = 0
+        
+        while True:
+            if not self.noAruco:
+                break
+            
+        # initializing temp variables
+        
+        temp_yaw = 0            # in rad
         temp_x = 0
         temp_y = 0
         temp_z = 0
         
-        yaw_tol = 4
-        xy_tol = 0.01
-        z_min = 0.5
-                
+        # tolerancing for landing conditions
+        
+        yaw_tol = 5             # in degrees
+        x_y_tol_upper = 1       # in m
+        x_y_tol = 50 / 1000     # in mm
+        z_min = 0.75            # in m
+        
+        # gains for movement control inputs
+        
+        K_xy_upper = 1
+        K_xy = 0.2
+        
+        K_yaw = 1
+        K_z = 1/3
+        K_gaz = 0.5
+        
+        K_xy_i = 0.1
+        
+        x_error_integral = 0
+        y_error_integral = 0
+        
         while True:
             
-            print("no aruco?  ", self.noAruco)
+            yaw_mode = False
+            xyz_mode = False
             
-            if np.rad2deg(self.yaw) < yaw_tol  and self.x < xy_tol and self.y < xy_tol and self.z < z_min:
+            # print("no aruco?  ", self.noAruco)
+                        
+            yaw_cond = abs(np.rad2deg(self.yaw)) < yaw_tol
+            x_cond_upper = abs(self.x) < x_y_tol_upper
+            y_cond_upper = abs(self.y) < x_y_tol_upper
+            x_cond = abs(self.x) < x_y_tol
+            y_cond = abs(self.y) < x_y_tol
+            z_cond = abs(self.z) < z_min
+            
+            # break to land?
+            
+            if yaw_cond and x_cond and y_cond and z_cond:
                 print("all landing criteria met")
                 break
             if self.noAruco:
                 print("no aruco found")
                 break
             
-            
             # correctional conditions, we don't want to over correct or worry about things that are close enough
             
-            if np.rad2deg(self.yaw) > yaw_tol:
+            if not yaw_cond:
                 temp_yaw = self.yaw
-                # the rest are zero. we aren't changing those. just focus on yaw
                 temp_x = 0
                 temp_y = 0
                 temp_z = 0
+                yaw_mode = True
                 print("correcting yaw")
+            
+            elif not x_cond_upper or not y_cond_upper:
+                if self.x < 0:
+                    temp_x = -1
+                elif self.x > 0:
+                    temp_x = 1
                 
-            elif self.x > xy_tol or self.x > xy_tol:
+                if self.y < 0:
+                    temp_y = -1
+                elif self.y > 0:
+                    temp_y = 1
+                    
+                temp_z = 0
+                temp_yaw = 0
+                
+                xyz_mode = True
+                print("correcting large x&y")
+            
+            elif not x_cond or not y_cond:
                 temp_x = self.x
                 temp_y = self.y
-                
+                temp_yaw = 0
                 temp_z = 0
-                temp_yaw = 0
+                xyz_mode = True
+                print("correcting small x&y")
                 
-                print("correcting x&y")
-                
-            elif self.z > z_min:
-                temp_z = self.z
-                
-                temp_x = 0
-                temp_y = 0
-                temp_yaw = 0
-                
-                print("correcting z")
+            # elif not z_cond:
+            #     temp_z = K_z*self.z
+            #     temp_x = 0
+            #     temp_y = 0
+            #     temp_yaw = 0
+            #     print("correcting z")
+                        
+            r_p_max = 3
+            yaw_max = 15
+            gaz_max = 100
             
-            print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
-            
-            gain_yaw = 1
-            gain_gaz = 0.35
-            
-            flag = 0
-            roll = int(  -25*(temp_y)  )
-            pitch = int(  -25*(temp_x)  )
-            yaw = int(  75*(gain_yaw*(temp_yaw))  )
-            gaz = int(  -25*gain_gaz*temp_z  )
+            flag = 1
+            roll = round(    r_p_max*(temp_y)  )
+            pitch = round(   r_p_max*(temp_x)  )
+            yaw = round(     yaw_max*(K_yaw*(temp_yaw))  )
+            gaz = round(    -gaz_max*K_gaz*temp_z  )
             timestampAndSeqNum = 0
             
+            print(self.yaw)
             print("yaw input: ", yaw)
-            print("outputs : \nroll: ", roll)
+            print("roll: ", roll)
             print("pitch: ", pitch)
             print("gaz: ", gaz)
-            self.drone(PCMD(flag, roll, pitch, yaw, gaz, timestampAndSeqNum, _timeout=5)).wait()
+            print("\n")
+            
+            if yaw_mode:
+                self.drone(moveBy(0, 0, 0, temp_yaw, _timeout=5)).wait()
+            if xyz_mode:
+                self.drone(PCMD(flag, roll, pitch, 0, gaz, timestampAndSeqNum, _timeout=2))#.wait()
         
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
@@ -329,11 +383,11 @@ def loop_control():
     # Start the video stream
     drone.start()
     
-    drone.move_gimbal(-90)
-
     # Perform some live video processing while the drone is flying
     drone.takeoff_spin()
-    
+
+    drone.move_gimbal(-90)
+
     print("landing sequence started")
     
     drone.correct_land()

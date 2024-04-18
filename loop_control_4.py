@@ -1,3 +1,11 @@
+"""_summary_
+
+This program uses the PCMD methods to control the drone
+
+
+    """
+
+
 
 import math
 import os
@@ -159,6 +167,7 @@ class StreamingExample:
         # start the timer for tracking time stamps for graphing
         
         start_time = time.time()
+        noArucoCount = 0
 
         while True:
             
@@ -190,8 +199,10 @@ class StreamingExample:
                 
                 corners, ids, _ = cv2.aruco.detectMarkers(gray_frame, dictionary, parameters=parameters)
                 
+                
                 if len(corners) > 0:
                     self.noAruco = False
+                    noArucoCount = 0
                     for i in range(0, len(ids)):
                         # Estimate pose of each marker and return the values rvec and tvec---(different from those of camera coefficients)
                         rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners[i], 0.02, k, d)
@@ -234,7 +245,7 @@ class StreamingExample:
                         z_deque.append(self.z)
                         yaw_deque.append(self.yaw)
                         
-                        if len(x_deque) <= 5:
+                        if len(x_deque) <= 4:
                             continue
                         else:
                             x_deque.popleft()
@@ -255,6 +266,9 @@ class StreamingExample:
                         yaw_SME_array.append(self.yaw)
                         
                 else:
+                    noArucoCount += 1
+                    
+                if noArucoCount > 30:
                     self.noAruco = True
     
 
@@ -297,11 +311,12 @@ class StreamingExample:
 
     def correct_land(self):
         
+        
         while True:
             if not self.noAruco:
                 break
         time.sleep(1)
-            
+        
         # initializing temp variables
         
         temp_yaw = 0            # in rad
@@ -311,37 +326,29 @@ class StreamingExample:
         
         # tolerancing for landing conditions
         
-        yaw_tol = 3.5             # in degrees
-        x_y_upper_tol = 30  / 1000    # in mm
-        x_y_lower_tol = 7   / 1000    # in mm
-        z_min = 0.56            # in m
+        yaw_tol = 5             # in degrees
+        x_y_tol_upper = 1       # in m
+        x_y_tol = 50 / 1000     # in mm
+        z_min = 0.75            # in m
         
         # gains for movement control inputs
-        
-        K_xy_upper = 1
-        K_xy_lower = 0.18
-        
+                
         K_yaw = 1
-        K_z = 1/5
-        
-        K_xy_i = 0.03
-        
-        x_error_integral = 0
-        y_error_integral = 0
-        
-        offset = 3 / 100        # cm
+        K_z = 1/3
+        K_gaz = 0.5        
         
         while True:
             
-            # conditionals
+            yaw_mode = False
+            xyz_mode = False
             
-            x = self.x - offset
-            
-            upper_x_y_cond = abs(x - 0.03) > x_y_upper_tol or abs(self.y) > x_y_upper_tol
-            
+            # print("no aruco?  ", self.noAruco)
+                        
             yaw_cond = abs(np.rad2deg(self.yaw)) < yaw_tol
-            x_cond = abs(x) < x_y_lower_tol
-            y_cond = abs(self.y) < x_y_lower_tol
+            x_cond_upper = abs(self.x) < x_y_tol_upper
+            y_cond_upper = abs(self.y) < x_y_tol_upper
+            x_cond = abs(self.x) < x_y_tol
+            y_cond = abs(self.y) < x_y_tol
             z_cond = abs(self.z) < z_min
             
             # break to land?
@@ -353,69 +360,72 @@ class StreamingExample:
                 print("no aruco found")
                 break
             
-            
-            # pose adjustments if we aren't landing
+            # correctional conditions, we don't want to over correct or worry about things that are close enough
             
             if not yaw_cond:
-                temp_yaw = K_yaw*self.yaw
+                temp_yaw = self.yaw
                 temp_x = 0
                 temp_y = 0
                 temp_z = 0
+                yaw_mode = True
                 print("correcting yaw")
+            
+            elif not x_cond_upper or not y_cond_upper:
+                if self.x < 0:
+                    temp_x = -1
+                elif self.x > 0:
+                    temp_x = 1
                 
-            elif upper_x_y_cond:
-                temp_x = K_xy_upper*x
-                temp_y = K_xy_upper*self.y
+                if self.y < 0:
+                    temp_y = -1
+                elif self.y > 0:
+                    temp_y = 1
+                    
                 temp_z = 0
                 temp_yaw = 0
                 
-                lim = 0.1
-                
-                if temp_x > -lim and temp_x < 0:
-                    temp_x = -lim
-                elif temp_x < lim and temp_x > 0:
-                    temp_x = lim
-                
-                if temp_y > -lim and temp_y < 0:
-                    temp_y = -lim
-                elif temp_y < lim and temp_y > 0:
-                    temp_y = lim
-                
+                xyz_mode = True
                 print("correcting large x&y")
-                
-            elif not z_cond:
-                temp_z = K_z*self.z
-                temp_x = 0
-                temp_y = 0
-                temp_yaw = 0
-                print("correcting z")
             
             elif not x_cond or not y_cond:
-                # this section contains the PI control
-                # x_error_integral += x
-                y_error_integral += self.y
-                temp_x = K_xy_lower*x #+ K_xy_i*x_error_integral
-                temp_y = K_xy_lower*self.y + K_xy_i*y_error_integral
+                temp_x = self.x
+                temp_y = self.y
+                temp_yaw = 0
                 temp_z = 0
-                temp_yaw = K_yaw*self.yaw
-                print("correcting x&y with PI control and yaw")
+                xyz_mode = True
+                print("correcting small x&y")
+                
+            # elif not z_cond:
+            #     temp_z = K_z*self.z
+            #     temp_x = 0
+            #     temp_y = 0
+            #     temp_yaw = 0
+            #     print("correcting z")
             
+            r_p_max = 3
+            yaw_max = 15
+            gaz_max = 100
             
-            print("___CHECKING BOOLS___")
-            print("yaw is good: ", abs(np.rad2deg(self.yaw)) < yaw_tol)
-            print("x is good: ", abs(x) < x_y_lower_tol)
-            print("y is good: ", abs(self.y) < x_y_lower_tol)
-            print("z is good: ", abs(self.z) < z_min)
+            flag = 1
+            roll = round(    r_p_max*(temp_y)  )
+            pitch = round(   r_p_max*(temp_x)  )
+            yaw = round(     yaw_max*(K_yaw*(temp_yaw))  )
+            gaz = round(    -gaz_max*K_gaz*temp_z  )
+            timestampAndSeqNum = 0
+            
+            print(self.yaw)
+            print("yaw input: ", yaw)
+            print("roll: ", roll)
+            print("pitch: ", pitch)
+            print("gaz: ", gaz)
             print("\n")
             
-            print("x: ", x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw))
-            print("x: ", temp_x, ", y: ", temp_y, ", z: " , temp_z, ", yaw: ", np.rad2deg(temp_yaw))
-                        
-            print("\n================================\n")
-            
-            self.drone(moveBy(temp_x, temp_y, temp_z, temp_yaw, _timeout=5)).wait()
+            if yaw_mode:
+                self.drone(moveBy(0, 0, 0, temp_yaw, _timeout=5)).wait()
+            if xyz_mode:
+                self.drone(PCMD(flag, roll, pitch, 0, gaz, timestampAndSeqNum, _timeout=2))#.wait()
         
-        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
+        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
 
 
@@ -455,26 +465,14 @@ class StreamingExample:
     
 
 # variables used in threads
-yuv_frame_2dArray_cache = deque()
-yuv_frame_cache = deque()
-
-x_deque = deque()
-y_deque = deque()
-z_deque = deque()
-yaw_deque = deque()
+yuv_frame_2dArray_cache = deque(); yuv_frame_cache = deque()
+x_deque = deque(); y_deque = deque(); z_deque = deque(); yaw_deque = deque()
 
 
 # these are for graphing to track performance
 
-x_array = array('f')
-y_array = array('f')
-z_array = array('f')
-yaw_array = array('f')
-
-x_SME_array = array('f')
-y_SME_array = array('f')
-z_SME_array = array('f')
-yaw_SME_array = array('f')
+x_array = array('f');     y_array = array('f');     z_array = array('f');     yaw_array = array('f')
+x_SME_array = array('f'); y_SME_array = array('f'); z_SME_array = array('f'); yaw_SME_array = array('f')
 
 time_array = array('f')
 
