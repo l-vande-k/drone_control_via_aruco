@@ -85,7 +85,7 @@ class StreamingExample:
         )
         # Start video streaming
         self.drone.streaming.start()
-        self.renderer = PdrawRenderer(pdraw=self.drone.streaming)
+        # self.renderer = PdrawRenderer(pdraw=self.drone.streaming)
         self.running = True
         
         self.frame_grabbing_thread.start()
@@ -211,6 +211,8 @@ class StreamingExample:
 
                         tvec = tvec*scaler
                         
+                        # cv2.drawFrameAxes(bgr_frame, k, d, rvec, tvec, 0.01) 
+                        
                         self.y = tvec[0][0][0] # +x axis in frame is +y on drone
                         self.x = -1*tvec[0][0][1] # -y axis in frame is +x on drone
                         self.z = tvec[0][0][2] # +z axis in frame is +z on drone
@@ -239,6 +241,8 @@ class StreamingExample:
                         yaw_SME_array.append(self.yaw)
                 else:
                     self.noAruco = True
+                    
+            # cv2.imshow('Estimated Pose', bgr_frame)
 
     def flush_cb(self, stream):
         if stream["vdef_format"] != olympe.VDEF_I420:
@@ -281,8 +285,8 @@ class StreamingExample:
         while True:
             if not self.noAruco:
                 break
-        time.sleep(1)
-            
+        time.sleep(1) # this is a patch to wait for the gimbal to finish rotating
+        
         # initializing temp variables
         
         temp_yaw = 0            # in rad
@@ -329,10 +333,10 @@ class StreamingExample:
             # break to land?
             
             if yaw_cond and x_cond and y_cond and z_cond:
-                print("all landing criteria met")
+                # print("all landing criteria met")
                 break
             if self.noAruco:
-                print("no aruco found")
+                # print("no aruco found")
                 break
             
             
@@ -343,7 +347,7 @@ class StreamingExample:
                 temp_x = 0
                 temp_y = 0
                 temp_z = 0
-                print("correcting yaw")
+                # print("correcting yaw")
                 
             elif upper_x_y_cond:
                 temp_x = K_xy_upper*x
@@ -363,14 +367,14 @@ class StreamingExample:
                 elif temp_y < lim and temp_y > 0:
                     temp_y = lim
                 
-                print("correcting large x&y")
+                # print("correcting large x&y")
                 
             elif not z_cond:
                 temp_z = K_z*self.z
                 temp_x = 0
                 temp_y = 0
                 temp_yaw = 0
-                print("correcting z")
+                # print("correcting z")
             
             elif not x_cond or not y_cond:
                 # this section contains the PI control
@@ -380,20 +384,20 @@ class StreamingExample:
                 temp_y = K_xy_lower*self.y + K_xy_i*y_error_integral
                 temp_z = 0
                 temp_yaw = K_yaw_lower*self.yaw
-                print("correcting x&y with PI control and yaw")
+                # print("correcting x&y with PI control and yaw")
             
             
-            print("___CHECKING BOOLS___")
-            print("yaw is good: ", abs(np.rad2deg(self.yaw)) < yaw_tol)
-            print("x is good: ", abs(x) < x_y_lower_tol)
-            print("y is good: ", abs(self.y) < x_y_lower_tol)
-            print("z is good: ", abs(self.z) < z_min)
-            print("\n")
+            # print("___CHECKING BOOLS___")
+            # print("yaw is good: ", abs(np.rad2deg(self.yaw)) < yaw_tol)
+            # print("x is good: ", abs(x) < x_y_lower_tol)
+            # print("y is good: ", abs(self.y) < x_y_lower_tol)
+            # print("z is good: ", abs(self.z) < z_min)
+            # print("\n")
             
-            print("x: ", x*1000, "mm, y: ", self.y*1000, "mm, z: " , self.z*100, "cm, yaw: ", np.rad2deg(self.yaw))
-            print("x: ", temp_x*1000, "mm, y: ", temp_y*1000, "mm, z: " , temp_z*100, "cm, yaw: ", np.rad2deg(temp_yaw))
+            # print("x: ", x*1000, "mm, y: ", self.y*1000, "mm, z: " , self.z*100, "cm, yaw: ", np.rad2deg(self.yaw))
+            # print("x: ", temp_x*1000, "mm, y: ", temp_y*1000, "mm, z: " , temp_z*100, "cm, yaw: ", np.rad2deg(temp_yaw))
                         
-            print("\n================================\n")
+            # print("\n================================\n")
             
             self.drone(moveBy(temp_x, temp_y, temp_z, temp_yaw, _timeout=5)).wait()
         
@@ -472,11 +476,12 @@ def loop_control():
 
     drone.move_gimbal(0)
     
+    cv2.destroyAllWindows()
+    
     # Stop the video stream
     drone.stop()
     
-    drone.write_csv(drone.unique_filename)
-
+    drone.write_csv(drone.unique_filename)    
     print("done")
 
 
