@@ -34,7 +34,7 @@ class StreamingExample:
 
     frame_count = 0
     stop_processing = False
-    yaw = -math.pi
+    yaw = 0
     x = 0
     y = 0
     z = 0
