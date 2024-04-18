@@ -226,37 +226,17 @@ class StreamingExample:
                         time_stamp = time_now - start_time
                         time_array.append(time_stamp)
                         
-                        
                         # ===== this section is the SME filter ======
-                        
-                        x_deque.append(self.x)
-                        y_deque.append(self.y)
-                        z_deque.append(self.z)
                         yaw_deque.append(self.yaw)
-                        
-                        if len(x_deque) <= 5:
+                        if len(yaw_deque) <= 20:
                             continue
                         else:
-                            x_deque.popleft()
-                            y_deque.popleft()
-                            z_deque.popleft()
                             yaw_deque.popleft()
-                            
-                        self.x = np.average(x_deque)
-                        self.y = np.average(y_deque)
-                        self.z = np.average(z_deque)
-                        self.yaw = np.average(yaw_deque)
-                        
+                        self.yaw = np.average(yaw_deque
                         # for processing later
-
-                        x_SME_array.append(self.x)
-                        y_SME_array.append(self.y)
-                        z_SME_array.append(self.z)
                         yaw_SME_array.append(self.yaw)
-                        
                 else:
                     self.noAruco = True
-    
 
     def flush_cb(self, stream):
         if stream["vdef_format"] != olympe.VDEF_I420:
@@ -418,22 +398,21 @@ class StreamingExample:
             # Write the rows (arrays side by side) to the CSV file
             csv_writer.writerows(rows)
             
-        rows = zip(time_array, x_SME_array, y_SME_array, z_SME_array, yaw_SME_array)
+        rows = zip(time_array, yaw_SME_array)
             
-        csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + '/SME_filter.csv'
+        csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + '/moving_average_filter.csv'
         
         # Open the CSV file in write mode
         with open(csv_file_path, 'w', newline='') as csvfile:
             # Create a CSV writer object
             csv_writer = csv.writer(csvfile)
             
-            column_titles = ['Time', 'X', 'Y', 'Z', 'Yaw']
+            column_titles = ['Time', 'Yaw']
             csv_writer.writerow(column_titles)
 
             # Write the rows (arrays side by side) to the CSV file
             csv_writer.writerows(rows)
     
-
 # variables used in threads
 yuv_frame_2dArray_cache = deque()
 yuv_frame_cache = deque()
@@ -443,7 +422,6 @@ y_deque = deque()
 z_deque = deque()
 yaw_deque = deque()
 
-
 # these are for graphing to track performance
 
 x_array = array('f')
@@ -451,13 +429,9 @@ y_array = array('f')
 z_array = array('f')
 yaw_array = array('f')
 
-x_SME_array = array('f')
-y_SME_array = array('f')
-z_SME_array = array('f')
 yaw_SME_array = array('f')
 
 time_array = array('f')
-
 
 def loop_control():
     drone = StreamingExample()
