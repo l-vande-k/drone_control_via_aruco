@@ -208,10 +208,12 @@ class StreamingExample:
                         # here we get the translational values from the translation vector, tvec
                         # these measurements aren't accurate, they need to be enlarged
                         scaler = 1.0/0.4275
+
+                        tvec = tvec*scaler
                         
-                        self.y = scaler*tvec[0][0][0] # +x axis in frame is +y on drone
-                        self.x = -1*scaler*tvec[0][0][1] # -y axis in frame is +x on drone
-                        self.z = scaler*tvec[0][0][2] # +z axis in frame is +z on drone
+                        self.y = tvec[0][0][0] # +x axis in frame is +y on drone
+                        self.x = -1*tvec[0][0][1] # -y axis in frame is +x on drone
+                        self.z = tvec[0][0][2] # +z axis in frame is +z on drone
                         
                         # we need to add these to the array we are storing the x values in
                         
