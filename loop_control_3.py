@@ -234,7 +234,7 @@ class StreamingExample:
                             continue
                         else:
                             yaw_deque.popleft()
-                        self.yaw = np.average(yaw_deque
+                        self.yaw = np.average(yaw_deque)
                         # for processing later
                         yaw_SME_array.append(self.yaw)
                 else:
@@ -273,7 +273,6 @@ class StreamingExample:
             FlyingStateChanged(state="hovering")
             | (TakeOff() & FlyingStateChanged(state="hovering"))
         ).wait()
-        
         # take a 360 pan of the room for post processing
         self.drone(moveBy(0, 0, 0, np.deg2rad(370), _timeout=20)).wait()
 
@@ -293,20 +292,21 @@ class StreamingExample:
         
         # tolerancing for landing conditions
         
-        yaw_tol = 3.5             # in degrees
-        x_y_upper_tol = 30  / 1000    # in mm
+        yaw_tol = 3                 # in degrees
+        x_y_upper_tol = 5  / 100      # in cm
         x_y_lower_tol = 7   / 1000    # in mm
-        z_min = 0.56            # in m
+        z_min = 0.56                  # in m
         
         # gains for movement control inputs
         
         K_xy_upper = 1
-        K_xy_lower = 0.18
+        K_xy_lower = 0.12
         
         K_yaw = 1
+        K_yaw_lower = 0.5
         K_z = 1/5
         
-        K_xy_i = 0.03
+        K_xy_i = 0.02
         
         x_error_integral = 0
         y_error_integral = 0
@@ -351,7 +351,7 @@ class StreamingExample:
                 temp_z = 0
                 temp_yaw = 0
                 
-                lim = 0.1
+                lim = 0.08
                 
                 if temp_x > -lim and temp_x < 0:
                     temp_x = -lim
@@ -379,7 +379,7 @@ class StreamingExample:
                 temp_x = K_xy_lower*x #+ K_xy_i*x_error_integral
                 temp_y = K_xy_lower*self.y + K_xy_i*y_error_integral
                 temp_z = 0
-                temp_yaw = K_yaw*self.yaw
+                temp_yaw = K_yaw_lower*self.yaw
                 print("correcting x&y with PI control and yaw")
             
             
@@ -390,8 +390,8 @@ class StreamingExample:
             print("z is good: ", abs(self.z) < z_min)
             print("\n")
             
-            print("x: ", x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw))
-            print("x: ", temp_x, ", y: ", temp_y, ", z: " , temp_z, ", yaw: ", np.rad2deg(temp_yaw))
+            print("x: ", x*1000, "mm, y: ", self.y*1000, "mm, z: " , self.z*100, "cm, yaw: ", np.rad2deg(self.yaw))
+            print("x: ", temp_x*1000, "mm, y: ", temp_y*1000, "mm, z: " , temp_z*100, "cm, yaw: ", np.rad2deg(temp_yaw))
                         
             print("\n================================\n")
             
