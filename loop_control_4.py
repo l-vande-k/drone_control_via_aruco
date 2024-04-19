@@ -149,7 +149,7 @@ class StreamingExample:
         dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50) # the aruco ID must be below 50
         parameters = aruco.DetectorParameters()
         
-        # this grabs the color flag index from memory
+        # this grabs the color flag index from memory in order to solve an error
         color_flag_index = None
         file_path = "/home/levi/Documents/drone_testing/drone_control_via_aruco/image_processing_variables/color_flag_index.pickle"
         with open(file_path, 'rb') as file:
