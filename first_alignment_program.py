@@ -226,8 +226,8 @@ class StreamingExample:
             | (TakeOff() & FlyingStateChanged(state="hovering"))
         ).wait()
 
-        print("x&y: ", 2*self.x, ", ", 2*self.y)
-        self.drone(moveBy(2*self.x, 2*self.y, 0, self.yaw, _timeout=20)).wait()
+        print("x&y: ", self.x, ", ", self.y)
+        self.drone(moveBy(self.x, self.y, 0, self.yaw, _timeout=20)).wait()
 
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
 
