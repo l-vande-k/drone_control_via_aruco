@@ -10,6 +10,7 @@ import pickle
 from array import *
 import csv
 
+from itertools import zip_longest
 
 import cv2
 import cv2.aruco as aruco
@@ -34,13 +35,10 @@ class StreamingExample:
 
     frame_count = 0
     stop_processing = False
-    control_finished = False
     yaw = 0
     x = 0
     y = 0
     z = 0
-    
-    bgr_frame = []
     
     unique_filename = ""
 
@@ -59,7 +57,6 @@ class StreamingExample:
         self.frame_queue = queue.Queue()
         self.frame_grabbing_thread = threading.Thread(target=self.yuv_frame_grabbing)
         self.processing_thread = threading.Thread(target=self.frame_processing)
-        self.control_thread = threading.Thread(target=self.correct_land)
 
         self.renderer = None
 
@@ -89,7 +86,7 @@ class StreamingExample:
         )
         # Start video streaming
         self.drone.streaming.start()
-        # self.renderer = PdrawRenderer(pdraw=self.drone.streaming)
+        self.renderer = PdrawRenderer(pdraw=self.drone.streaming)
         self.running = True
         
         self.frame_grabbing_thread.start()
@@ -189,8 +186,8 @@ class StreamingExample:
 
 
                 # yuv --> bgr --> gray
-                self.bgr_frame = cv2.cvtColor(yuv_frame_2dArray_cache[-2], cv2_cvt_color_flag)
-                gray_frame = cv2.cvtColor(self.bgr_frame, cv2.COLOR_BGR2GRAY)
+                bgr_frame = cv2.cvtColor(yuv_frame_2dArray_cache[-2], cv2_cvt_color_flag)
+                gray_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2GRAY)
                 
                 corners, ids, _ = cv2.aruco.detectMarkers(gray_frame, dictionary, parameters=parameters)
                 
@@ -215,7 +212,7 @@ class StreamingExample:
 
                         tvec = tvec*scaler
                         
-                        cv2.drawFrameAxes(self.bgr_frame, k, d, rvec, tvec, 0.01) 
+                        # cv2.drawFrameAxes(bgr_frame, k, d, rvec, tvec, 0.01) 
                         
                         self.y = tvec[0][0][0] # +x axis in frame is +y on drone
                         self.x = -1*tvec[0][0][1] # -y axis in frame is +x on drone
@@ -235,17 +232,18 @@ class StreamingExample:
                         time_array.append(time_stamp)
                         
                         # ===== this section is the SME filter ======
+                        MA_width = 150
                         yaw_deque.append(self.yaw)
-                        if len(yaw_deque) <= 20:
+                        if len(yaw_deque) <= MA_width:
                             continue
                         else:
                             yaw_deque.popleft()
                         self.yaw = np.average(yaw_deque)
                         # for processing later
-                        yaw_SME_array.append(self.yaw)
+                        yaw_MA_array.append(self.yaw)
                 else:
                     self.noAruco = True
-
+                    
     def flush_cb(self, stream):
         if stream["vdef_format"] != olympe.VDEF_I420:
             return True
@@ -284,13 +282,13 @@ class StreamingExample:
 
     def correct_land(self):
         
+        start_time = time.time()
+        
         while True:
             if not self.noAruco:
-                print("no aruco...")
                 break
-        time.sleep(1) # this is a patch to wait for the gimbal to finish rotating
-        print("landing sequence started")
-
+        time.sleep(3) # this is a patch to wait for the gimbal to finish rotating
+        
         # initializing temp variables
         
         temp_yaw = 0            # in rad
@@ -319,15 +317,17 @@ class StreamingExample:
         x_error_integral = 0
         y_error_integral = 0
         
-        offset = 3 / 100        # cm
+        offset = 5 / 100        # cm
         
         while True:
+            
+            self.move_gimbal(-90)
             
             # conditionals
             
             x = self.x - offset
             
-            upper_x_y_cond = abs(x - 0.03) > x_y_upper_tol or abs(self.y) > x_y_upper_tol
+            upper_x_y_cond = abs(x) > x_y_upper_tol or abs(self.y) > x_y_upper_tol
             
             yaw_cond = abs(np.rad2deg(self.yaw)) < yaw_tol
             x_cond = abs(x) < x_y_lower_tol
@@ -337,29 +337,23 @@ class StreamingExample:
             # break to land?
             
             if yaw_cond and x_cond and y_cond and z_cond:
-                # print("all landing criteria met")
+                print("all landing criteria met")
                 break
             if self.noAruco:
-                # print("no aruco found")
+                print("no aruco found")
                 break
             
             
             # pose adjustments if we aren't landing
             
-            if not yaw_cond:
-                temp_yaw = K_yaw*self.yaw
-                temp_x = 0
-                temp_y = 0
-                temp_z = 0
-                # print("correcting yaw")
-                
-            elif upper_x_y_cond:
+            
+            if upper_x_y_cond:
                 temp_x = K_xy_upper*x
                 temp_y = K_xy_upper*self.y
                 temp_z = 0
                 temp_yaw = 0
                 
-                lim = 0.08
+                lim = 0.07
                 
                 if temp_x > -lim and temp_x < 0:
                     temp_x = -lim
@@ -371,78 +365,78 @@ class StreamingExample:
                 elif temp_y < lim and temp_y > 0:
                     temp_y = lim
                 
-                # print("correcting large x&y")
+                print("correcting large x&y")
+                
+            elif not yaw_cond:
+                temp_yaw = K_yaw*self.yaw
+                temp_x = 0
+                temp_y = 0
+                temp_z = 0
+                print("correcting yaw")
                 
             elif not z_cond:
                 temp_z = K_z*self.z
                 temp_x = 0
                 temp_y = 0
                 temp_yaw = 0
-                # print("correcting z")
+                print("correcting z")
             
             elif not x_cond or not y_cond:
                 # this section contains the PI control
                 # x_error_integral += x
                 y_error_integral += self.y
+                integral_error_y.append(y_error_integral)
                 temp_x = K_xy_lower*x #+ K_xy_i*x_error_integral
                 temp_y = K_xy_lower*self.y + K_xy_i*y_error_integral
                 temp_z = 0
                 temp_yaw = K_yaw_lower*self.yaw
-                # print("correcting x&y with PI control and yaw")
+                print("correcting x&y with PI control and yaw")
             
+            time_now = time.time()
+            time_stamp = time_now - start_time
+            time_inputs.append(time_stamp)
+            x_input.append(temp_x)
+            y_input.append(temp_y)
+            z_input.append(temp_z)
+            yaw_input.append(temp_yaw)
             
-            # print("___CHECKING BOOLS___")
-            # print("yaw is good: ", abs(np.rad2deg(self.yaw)) < yaw_tol)
-            # print("x is good: ", abs(x) < x_y_lower_tol)
-            # print("y is good: ", abs(self.y) < x_y_lower_tol)
-            # print("z is good: ", abs(self.z) < z_min)
-            # print("\n")
+            print("___CHECKING BOOLS___")
+            print("yaw is good: ", yaw_cond)
+            print("x is good: ", x_cond)
+            print("y is good: ", y_cond)
+            print("z is good: ", z_cond)
+            print("\n")
             
-            # print("x: ", x*1000, "mm, y: ", self.y*1000, "mm, z: " , self.z*100, "cm, yaw: ", np.rad2deg(self.yaw))
-            # print("x: ", temp_x*1000, "mm, y: ", temp_y*1000, "mm, z: " , temp_z*100, "cm, yaw: ", np.rad2deg(temp_yaw))
-                        
-            # print("\n================================\n")
+            print("x: ", round(x*1000), "mm, y: ", round(self.y*1000), "mm, z: " , round(self.z*1000), "mm, yaw: ", np.rad2deg(self.yaw))
+            print("x: ", round(temp_x*1000), "mm, y: ", round(temp_y*1000), "mm, z: " , round(temp_z*1000), "mm, yaw: ", np.rad2deg(temp_yaw))
+            
+            print("\n================================\n")
             
             self.drone(moveBy(temp_x, temp_y, temp_z, temp_yaw, _timeout=5)).wait()
         
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
-        self.control_finished = True
-
 
 
     def write_csv(self, unique_filename):
-        rows = zip(time_array, x_array, y_array, z_array, yaw_array)
+        rows = zip_longest(time_array, x_array, y_array, z_array, yaw_array, time_inputs, x_input, y_input, z_input, yaw_input, integral_error_y, fillvalue='')
         
         # Specify the CSV file path
         os.mkdir('/home/levi/Documents/drone_testing/drone_csv/' + unique_filename)
-        csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + '/no_filter.csv'
+        csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + '/data.csv'
         
         # Open the CSV file in write mode
         with open(csv_file_path, 'w', newline='') as csvfile:
             # Create a CSV writer object
             csv_writer = csv.writer(csvfile)
             
-            column_titles = ['Time', 'X', 'Y', 'Z', 'Yaw']
+            column_titles = ['Output Time', 'X', 'Y', 'Z', 'Yaw', 'Input Time','X Input', 'Y Input', 'Z Input', 'Yaw Input', 'Y Integral Error']
             csv_writer.writerow(column_titles)
 
             # Write the rows (arrays side by side) to the CSV file
             csv_writer.writerows(rows)
-            
-        rows = zip(time_array, yaw_SME_array)
-            
-        csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + '/moving_average_filter.csv'
         
-        # Open the CSV file in write mode
-        with open(csv_file_path, 'w', newline='') as csvfile:
-            # Create a CSV writer object
-            csv_writer = csv.writer(csvfile)
-            
-            column_titles = ['Time', 'Yaw']
-            csv_writer.writerow(column_titles)
-
-            # Write the rows (arrays side by side) to the CSV file
-            csv_writer.writerows(rows)
+        rows = zip(time_array, yaw_MA_array)
     
 # variables used in threads
 yuv_frame_2dArray_cache = deque()
@@ -459,10 +453,15 @@ x_array = array('f')
 y_array = array('f')
 z_array = array('f')
 yaw_array = array('f')
-
-yaw_SME_array = array('f')
-
+yaw_MA_array = array('f')
 time_array = array('f')
+
+x_input = array('f')
+y_input = array('f')
+z_input = array('f')
+yaw_input = array('f')
+integral_error_y = array('f')
+time_inputs = array('f')
 
 def loop_control():
     drone = StreamingExample()
@@ -474,19 +473,12 @@ def loop_control():
     
     drone.move_gimbal(-90)
     
+    print("landing sequence started")
+
     # this runs the P controlled landing method
-    thread_not_started = True
-    while True:
-        if thread_not_started:
-            drone.control_thread.start()
-            thread_not_started = False
-        cv2.imshow('Estimated Pose', drone.bgr_frame)
-        if drone.control_finished:
-            break
-    
+    drone.correct_land()
+
     drone.move_gimbal(0)
-    
-    cv2.destroyAllWindows()
     
     # Stop the video stream
     drone.stop()
