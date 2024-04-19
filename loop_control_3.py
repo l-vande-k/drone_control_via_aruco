@@ -202,9 +202,9 @@ class StreamingExample:
                         sy = math.sqrt(rot[0,0] * rot[0,0] +  rot[1,0] * rot[1,0])
                         singular = sy < 1e-6
                         if  not singular :
-                            self.yaw = math.atan2(rot[1,0], rot[0,0])
+                            yaw_pre_filter = math.atan2(rot[1,0], rot[0,0])
                         else :
-                            self.yaw = 0
+                            yaw_pre_filter = 0
                         
                         # here we get the translational values from the translation vector, tvec
                         # these measurements aren't accurate, they need to be enlarged
@@ -218,12 +218,12 @@ class StreamingExample:
                         self.x = -1*tvec[0][0][1] # -y axis in frame is +x on drone
                         self.z = tvec[0][0][2] # +z axis in frame is +z on drone
                         
-                        # we need to add these to the array we are storing the x values in
+                        # we need to add these to the array we are storing the values in
                         
                         x_array.append(self.x)
                         y_array.append(self.y)
                         z_array.append(self.z)
-                        yaw_array.append(self.yaw)
+                        yaw_array.append(yaw_pre_filter)
                         
                         # get the time stamp and add it to the time array
                         
@@ -233,14 +233,14 @@ class StreamingExample:
                         
                         # ===== this section is the SME filter ======
                         MA_width = 150
-                        yaw_deque.append(self.yaw)
+                        yaw_deque.append(yaw_pre_filter)
                         if len(yaw_deque) <= MA_width:
                             continue
                         else:
                             yaw_deque.popleft()
                         self.yaw = np.average(yaw_deque)
                         # for processing later
-                        yaw_MA_array.append(self.yaw)
+                        yaw_MA_array.append(yaw_pre_filter)
                 else:
                     self.noAruco = True
                     
@@ -287,7 +287,7 @@ class StreamingExample:
         while True:
             if not self.noAruco:
                 break
-        time.sleep(3) # this is a patch to wait for the gimbal to finish rotating
+        time.sleep(3) # this is a patch to wait for the gimbal to finish rotating since its angular velocity is slow
         
         # initializing temp variables
         
@@ -343,9 +343,7 @@ class StreamingExample:
                 print("no aruco found")
                 break
             
-            
-            # pose adjustments if we aren't landing
-            
+            # if not, continue pose adjustments
             
             if upper_x_y_cond:
                 temp_x = K_xy_upper*x

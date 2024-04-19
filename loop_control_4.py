@@ -41,6 +41,7 @@ class StreamingExample:
     z = 0
     
     unique_filename = ""
+    noAruco = True
 
     def __init__(self):
         # Create the olympe.Drone object from its IP address
@@ -51,8 +52,6 @@ class StreamingExample:
         self.unique_filename = str(uuid.uuid4())
         self.recorded_video = "/home/levi/Documents/drone_testing/drone_vids/" + self.unique_filename
         os.mkdir(self.recorded_video)
-        #print(f"Olympe streaming example output dir: {self.recorded_video}")
-
 
         self.frame_queue = queue.Queue()
         self.frame_grabbing_thread = threading.Thread(target=self.yuv_frame_grabbing)
@@ -71,10 +70,10 @@ class StreamingExample:
         You can record the video stream from the drone if you plan to do some post processing.
         This is currently turned off... it stops some error messages
         '''
-        # self.drone.streaming.set_output_files(
-        #     video=os.path.join(self.recorded_video, "streaming.mp4"),
-        #     metadata=os.path.join(self.recorded_video, "streaming_metadata.json"),
-        # )
+        self.drone.streaming.set_output_files(
+            video=os.path.join(self.recorded_video, "streaming.mp4"),
+            # metadata=os.path.join(self.recorded_video, "streaming_metadata.json"),
+        )
 
         # Setup your callback functions to do some live video processing
         # I don't know what these do
@@ -84,14 +83,14 @@ class StreamingExample:
             end_cb=self.end_cb,
             flush_raw_cb=self.flush_cb,
         )
+        
         # Start video streaming
         self.drone.streaming.start()
-        self.renderer = PdrawRenderer(pdraw=self.drone.streaming)
+        # self.renderer = PdrawRenderer(pdraw=self.drone.streaming) # comment this to disable the renderer
         self.running = True
         
         self.frame_grabbing_thread.start()
-        print("frame grabbing started")
-    
+        
 
     def stop(self):
         self.stop_processing = True
@@ -103,6 +102,7 @@ class StreamingExample:
         # Properly stop the video stream and disconnect
         assert self.drone.streaming.stop()
         assert self.drone.disconnect()
+        
 
     def yuv_frame_cb(self, yuv_frame):
         # This function will be called by Olympe for each decoded YUV frame.
@@ -133,7 +133,6 @@ class StreamingExample:
                 self.frame_count += 1
                 if self.frame_count >= 28 and thread_not_started:
                     self.processing_thread.start()
-                    print("processing started")
                     thread_not_started = False
             else:
                 # pop old frames off
@@ -142,8 +141,7 @@ class StreamingExample:
                 
             yuv_frame.unref()
 
-    noAruco = True
-    
+
     def frame_processing(self):
         
         dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50) # the aruco ID must be below 50
@@ -156,16 +154,11 @@ class StreamingExample:
             # Deserialize and retrieve the variable from the file
             color_flag_index = pickle.load(file)
         
-        
-        # start the timer for tracking time stamps for graphing
-        
-        start_time = time.time()
 
         while True:
             
             # this ends the thread with a bool
             if self.stop_processing == True:
-                print("told to stop processing")
                 break
             
             if yuv_frame_cache is not None and len(yuv_frame_cache) > 5 and yuv_frame_2dArray_cache is not None and len(yuv_frame_2dArray_cache) > 5:
@@ -218,19 +211,6 @@ class StreamingExample:
                         self.x = -1*tvec[0][0][1] # -y axis in frame is +x on drone
                         self.z = tvec[0][0][2] # +z axis in frame is +z on drone
                         
-                        # we need to add these to the array we are storing the x values in
-                        
-                        x_array.append(self.x)
-                        y_array.append(self.y)
-                        z_array.append(self.z)
-                        yaw_array.append(self.yaw)
-                        
-                        # get the time stamp and add it to the time array
-                        
-                        time_now = time.time()
-                        time_stamp = time_now - start_time
-                        time_array.append(time_stamp)
-                        
                         # ===== this section is the SME filter ======
                         MA_width = 150
                         yaw_deque.append(self.yaw)
@@ -239,11 +219,10 @@ class StreamingExample:
                         else:
                             yaw_deque.popleft()
                         self.yaw = np.average(yaw_deque)
-                        # for processing later
-                        yaw_MA_array.append(self.yaw)
                 else:
                     self.noAruco = True
-                    
+
+
     def flush_cb(self, stream):
         if stream["vdef_format"] != olympe.VDEF_I420:
             return True
@@ -251,11 +230,14 @@ class StreamingExample:
             self.frame_queue.get_nowait().unref()
         return True
 
+
     def start_cb(self):
         pass
 
+
     def end_cb(self):
         pass
+
 
     def move_gimbal(self,attitude):
         self.drone(
@@ -279,6 +261,7 @@ class StreamingExample:
         ).wait()
         # take a 360 pan of the room for post processing
         self.drone(moveBy(0, 0, 0, np.deg2rad(370), _timeout=20)).wait()
+
 
     def correct_land(self):
         
@@ -337,10 +320,8 @@ class StreamingExample:
             # break to land?
             
             if yaw_cond and x_cond and y_cond and z_cond:
-                print("all landing criteria met")
                 break
             if self.noAruco:
-                print("no aruco found")
                 break
             
             
@@ -364,104 +345,37 @@ class StreamingExample:
                     temp_y = -lim
                 elif temp_y < lim and temp_y > 0:
                     temp_y = lim
-                
-                print("correcting large x&y")
-                
+                                
             elif not yaw_cond:
                 temp_yaw = K_yaw*self.yaw
                 temp_x = 0
                 temp_y = 0
                 temp_z = 0
-                print("correcting yaw")
-                
+                            
             elif not z_cond:
                 temp_z = K_z*self.z
                 temp_x = 0
                 temp_y = 0
                 temp_yaw = 0
-                print("correcting z")
             
             elif not x_cond or not y_cond:
                 # this section contains the PI control
                 # x_error_integral += x
                 y_error_integral += self.y
-                integral_error_y.append(y_error_integral)
                 temp_x = K_xy_lower*x #+ K_xy_i*x_error_integral
                 temp_y = K_xy_lower*self.y + K_xy_i*y_error_integral
                 temp_z = 0
                 temp_yaw = K_yaw_lower*self.yaw
-                print("correcting x&y with PI control and yaw")
-            
-            time_now = time.time()
-            time_stamp = time_now - start_time
-            time_inputs.append(time_stamp)
-            x_input.append(temp_x)
-            y_input.append(temp_y)
-            z_input.append(temp_z)
-            yaw_input.append(temp_yaw)
-            
-            print("___CHECKING BOOLS___")
-            print("yaw is good: ", yaw_cond)
-            print("x is good: ", x_cond)
-            print("y is good: ", y_cond)
-            print("z is good: ", z_cond)
-            print("\n")
-            
-            print("x: ", round(x*1000), "mm, y: ", round(self.y*1000), "mm, z: " , round(self.z*1000), "mm, yaw: ", np.rad2deg(self.yaw))
-            print("x: ", round(temp_x*1000), "mm, y: ", round(temp_y*1000), "mm, z: " , round(temp_z*1000), "mm, yaw: ", np.rad2deg(temp_yaw))
-            
-            print("\n================================\n")
             
             self.drone(moveBy(temp_x, temp_y, temp_z, temp_yaw, _timeout=5)).wait()
         
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
-        print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
 
 
-    def write_csv(self, unique_filename):
-        rows = zip_longest(time_array, x_array, y_array, z_array, yaw_array, time_inputs, x_input, y_input, z_input, yaw_input, integral_error_y, fillvalue='')
-        
-        # Specify the CSV file path
-        os.mkdir('/home/levi/Documents/drone_testing/drone_csv/' + unique_filename)
-        csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + '/data.csv'
-        
-        # Open the CSV file in write mode
-        with open(csv_file_path, 'w', newline='') as csvfile:
-            # Create a CSV writer object
-            csv_writer = csv.writer(csvfile)
-            
-            column_titles = ['Output Time', 'X', 'Y', 'Z', 'Yaw', 'Input Time','X Input', 'Y Input', 'Z Input', 'Yaw Input', 'Y Integral Error']
-            csv_writer.writerow(column_titles)
-
-            # Write the rows (arrays side by side) to the CSV file
-            csv_writer.writerows(rows)
-        
-        rows = zip(time_array, yaw_MA_array)
-    
 # variables used in threads
 yuv_frame_2dArray_cache = deque()
 yuv_frame_cache = deque()
-
-x_deque = deque()
-y_deque = deque()
-z_deque = deque()
 yaw_deque = deque()
-
-# these are for graphing to track performance
-
-x_array = array('f')
-y_array = array('f')
-z_array = array('f')
-yaw_array = array('f')
-yaw_MA_array = array('f')
-time_array = array('f')
-
-x_input = array('f')
-y_input = array('f')
-z_input = array('f')
-yaw_input = array('f')
-integral_error_y = array('f')
-time_inputs = array('f')
 
 def loop_control():
     drone = StreamingExample()
@@ -473,8 +387,6 @@ def loop_control():
     
     drone.move_gimbal(-90)
     
-    print("landing sequence started")
-
     # this runs the P controlled landing method
     drone.correct_land()
 
@@ -482,10 +394,6 @@ def loop_control():
     
     # Stop the video stream
     drone.stop()
-    
-    drone.write_csv(drone.unique_filename)    
-    print("done")
-
 
 if __name__ == "__main__":
     loop_control()
