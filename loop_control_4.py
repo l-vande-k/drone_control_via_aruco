@@ -34,10 +34,13 @@ class StreamingExample:
 
     frame_count = 0
     stop_processing = False
+    control_finished = False
     yaw = 0
     x = 0
     y = 0
     z = 0
+    
+    bgr_frame = []
     
     unique_filename = ""
 
@@ -56,6 +59,7 @@ class StreamingExample:
         self.frame_queue = queue.Queue()
         self.frame_grabbing_thread = threading.Thread(target=self.yuv_frame_grabbing)
         self.processing_thread = threading.Thread(target=self.frame_processing)
+        self.control_thread = threading.Thread(target=self.correct_land)
 
         self.renderer = None
 
@@ -185,8 +189,8 @@ class StreamingExample:
 
 
                 # yuv --> bgr --> gray
-                bgr_frame = cv2.cvtColor(yuv_frame_2dArray_cache[-2], cv2_cvt_color_flag)
-                gray_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2GRAY)
+                self.bgr_frame = cv2.cvtColor(yuv_frame_2dArray_cache[-2], cv2_cvt_color_flag)
+                gray_frame = cv2.cvtColor(self.bgr_frame, cv2.COLOR_BGR2GRAY)
                 
                 corners, ids, _ = cv2.aruco.detectMarkers(gray_frame, dictionary, parameters=parameters)
                 
@@ -211,7 +215,7 @@ class StreamingExample:
 
                         tvec = tvec*scaler
                         
-                        # cv2.drawFrameAxes(bgr_frame, k, d, rvec, tvec, 0.01) 
+                        cv2.drawFrameAxes(self.bgr_frame, k, d, rvec, tvec, 0.01) 
                         
                         self.y = tvec[0][0][0] # +x axis in frame is +y on drone
                         self.x = -1*tvec[0][0][1] # -y axis in frame is +x on drone
@@ -241,8 +245,6 @@ class StreamingExample:
                         yaw_SME_array.append(self.yaw)
                 else:
                     self.noAruco = True
-                    
-            # cv2.imshow('Estimated Pose', bgr_frame)
 
     def flush_cb(self, stream):
         if stream["vdef_format"] != olympe.VDEF_I420:
@@ -284,9 +286,11 @@ class StreamingExample:
         
         while True:
             if not self.noAruco:
+                print("no aruco...")
                 break
         time.sleep(1) # this is a patch to wait for the gimbal to finish rotating
-        
+        print("landing sequence started")
+
         # initializing temp variables
         
         temp_yaw = 0            # in rad
@@ -403,6 +407,7 @@ class StreamingExample:
         
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
+        self.control_finished = True
 
 
 
@@ -469,11 +474,16 @@ def loop_control():
     
     drone.move_gimbal(-90)
     
-    print("landing sequence started")
-
     # this runs the P controlled landing method
-    drone.correct_land()
-
+    thread_not_started = True
+    while True:
+        if thread_not_started:
+            drone.control_thread.start()
+            thread_not_started = False
+        cv2.imshow('Estimated Pose', drone.bgr_frame)
+        if drone.control_finished:
+            break
+    
     drone.move_gimbal(0)
     
     cv2.destroyAllWindows()
