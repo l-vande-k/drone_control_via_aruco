@@ -327,7 +327,7 @@ class StreamingExample:
         # gains for movement control inputs
         
         K_xy_upper = 1
-        K_xy_lower = 0.12
+        K_xy_lower = 0.3
         
         K_yaw = 1
         K_yaw_lower = 0.5
