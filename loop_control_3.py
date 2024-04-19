@@ -118,7 +118,7 @@ class StreamingExample:
                 yuv_frame = self.frame_queue.get(timeout=0.1)
             except queue.Empty:
                 continue
-
+            
             # this section adds the frames to a deque object so that we can access the frames independent of this thread when we need to
             
             # unatlered yuv frame with all info attached added to double ended queue
@@ -156,6 +156,12 @@ class StreamingExample:
             # Deserialize and retrieve the variable from the file
             color_flag_index = pickle.load(file)
         
+        # variables for image processing
+        k = np.array([[921.3151587, 0., 666.84963128],
+                    [0., 921.88843465, 354.19572665],
+                    [0., 0., 1.]])
+        
+        d = np.array([1.13291286e-02, 3.14439185e-01, -5.19291075e-03, -2.07237003e-04, -5.95381063e-01])
         
         # start the timer for tracking time stamps for graphing
         
@@ -169,13 +175,6 @@ class StreamingExample:
                 break
             
             if yuv_frame_cache is not None and len(yuv_frame_cache) > 5 and yuv_frame_2dArray_cache is not None and len(yuv_frame_2dArray_cache) > 5:
-
-                # variables for image processing
-                k = np.array([[921.3151587, 0., 666.84963128],
-                            [0., 921.88843465, 354.19572665],
-                            [0., 0., 1.]])
-                
-                d = np.array([1.13291286e-02, 3.14439185e-01, -5.19291075e-03, -2.07237003e-04, -5.95381063e-01])
                 
                 # this creates the flag that is passed into the following lines that is used for bgr conversion
                 
@@ -183,7 +182,6 @@ class StreamingExample:
                 olympe.VDEF_I420: cv2.COLOR_YUV2BGR_I420,
                 olympe.VDEF_NV12: cv2.COLOR_YUV2BGR_NV12,
                 }[color_flag_index]
-
 
                 # yuv --> bgr --> gray
                 bgr_frame = cv2.cvtColor(yuv_frame_2dArray_cache[-2], cv2_cvt_color_flag)
@@ -258,6 +256,29 @@ class StreamingExample:
         pass
 
     def move_gimbal(self,attitude):
+        
+        self.drone(
+            gimbal.set_max_speed(
+                gimbal_id = 0,
+                yaw = 360.0,
+                pitch = 360.0,
+                roll = 360.0,
+            )
+        )
+        
+        self.drone(
+            gimbal.set_target(
+                gimbal_id = 0,
+                control_mode = "velocity",
+                yaw_frame_of_reference = "absolute",
+                yaw = 1.0,
+                pitch_frame_of_reference = "absolute",
+                pitch = 1.0,
+                roll_frame_of_reference = "absolute",
+                roll = 1.0,
+            )
+        )
+        
         self.drone(
             gimbal.set_target(
                 gimbal_id = 0,
@@ -267,9 +288,9 @@ class StreamingExample:
                 pitch_frame_of_reference = "absolute",
                 pitch = attitude,
                 roll_frame_of_reference = "absolute",
-                roll = 0.0
+                roll = 0.0,
             )
-        ).wait()
+        )
 
 
     def takeoff_spin(self):
@@ -278,16 +299,16 @@ class StreamingExample:
             | (TakeOff() & FlyingStateChanged(state="hovering"))
         ).wait()
         # take a 360 pan of the room for post processing
-        self.drone(moveBy(0, 0, 0, np.deg2rad(370), _timeout=20)).wait()
+        self.drone(moveBy(0, 0, 0, np.deg2rad(360), _timeout=20)).wait()
 
     def correct_land(self):
         
         start_time = time.time()
         
         while True:
-            if not self.noAruco:
+            if not self.noAruco or start_time - time.time() > 15:
                 break
-        time.sleep(3) # this is a patch to wait for the gimbal to finish rotating since its angular velocity is slow
+        time.sleep(0.5) # this is a patch to wait for the gimbal to finish rotating since its angular velocity is slow
         
         # initializing temp variables
         
@@ -312,12 +333,14 @@ class StreamingExample:
         K_yaw_lower = 0.5
         K_z = 1/5
         
-        K_xy_i = 0.02
+        K_xy_i = 0.08
         
         x_error_integral = 0
         y_error_integral = 0
         
-        offset = 5 / 100        # cm
+        offset = 2 / 100        # cm
+        
+        correct_criteria_count = 0
         
         while True:
             
@@ -325,76 +348,102 @@ class StreamingExample:
             
             # conditionals
             
-            x = self.x - offset
-            
-            upper_x_y_cond = abs(x) > x_y_upper_tol or abs(self.y) > x_y_upper_tol
+            upper_x_y_cond = abs(self.x) > x_y_upper_tol or abs(self.y) > x_y_upper_tol
+            upper_x_cond = abs(self.x) > x_y_upper_tol 
+            upper_y_cond = abs(self.y) > x_y_upper_tol
             
             yaw_cond = abs(np.rad2deg(self.yaw)) < yaw_tol
-            x_cond = abs(x) < x_y_lower_tol
+            x_cond = abs(self.x) < x_y_lower_tol
             y_cond = abs(self.y) < x_y_lower_tol
             z_cond = abs(self.z) < z_min
             
             # break to land?
             
             if yaw_cond and x_cond and y_cond and z_cond:
-                print("all landing criteria met")
-                break
+                correct_criteria_count += 1
+                if correct_criteria_count > 5:
+                    print("all landing criteria met")
+                    break
+                time.sleep(0.1)
+                print(correct_criteria_count)
+                continue
+            correct_criteria_count = 0
+            
             if self.noAruco:
                 print("no aruco found")
                 break
             
             # if not, continue pose adjustments
-            
             if upper_x_y_cond:
-                temp_x = K_xy_upper*x
-                temp_y = K_xy_upper*self.y
-                temp_z = 0
-                temp_yaw = 0
+                if upper_x_cond:
+                    temp_x = K_xy_upper*self.x
+                    temp_y = K_xy_upper*self.y
+                    temp_z = 0
+                    temp_yaw = 0
+                    y_error_integral = 0
+                    
+                    lim = 0.05
+                    
+                    if temp_x > -lim and temp_x < 0:
+                        temp_x = -lim
+                    elif temp_x < lim and temp_x > 0:
+                        temp_x = lim
+                    
+                    if temp_y > -lim and temp_y < 0:
+                        temp_y = -lim
+                    elif temp_y < lim and temp_y > 0:
+                        temp_y = lim
                 
-                lim = 0.07
+                    print("correcting large x error")
                 
-                if temp_x > -lim and temp_x < 0:
-                    temp_x = -lim
-                elif temp_x < lim and temp_x > 0:
-                    temp_x = lim
-                
-                if temp_y > -lim and temp_y < 0:
-                    temp_y = -lim
-                elif temp_y < lim and temp_y > 0:
-                    temp_y = lim
-                
-                print("correcting large x&y")
+                if upper_y_cond:
+                    temp_x = K_xy_upper*self.x
+                    temp_y = K_xy_upper*self.y
+                    temp_z = 0
+                    temp_yaw = 0
+                    y_error_integral = 0
+                    
+                    lim = 0.05
+                    
+                    if temp_y > -lim and temp_y < 0:
+                        temp_y = -lim
+                    elif temp_y < lim and temp_y > 0:
+                        temp_y = lim
+                    
+                    print("correcting large y error")
                 
             elif not yaw_cond:
                 temp_yaw = K_yaw*self.yaw
                 temp_x = 0
                 temp_y = 0
                 temp_z = 0
-                print("correcting yaw")
+                y_error_integral = 0
+                print("correcting yaw error")
                 
             elif not z_cond:
                 temp_z = K_z*self.z
                 temp_x = 0
                 temp_y = 0
                 temp_yaw = 0
-                print("correcting z")
+                y_error_integral = 0
+                print("correcting z error")
             
             elif not x_cond or not y_cond:
                 # this section contains the PI control
                 # x_error_integral += x
                 y_error_integral += self.y
-                integral_error_y.append(y_error_integral)
-                temp_x = K_xy_lower*x #+ K_xy_i*x_error_integral
-                temp_y = K_xy_lower*self.y + K_xy_i*y_error_integral
+                temp_x = K_xy_lower*self.x #+ K_xy_i*x_error_integral
+                temp_y = K_xy_lower*self.y #+ K_xy_i*y_error_integral
                 temp_z = 0
                 temp_yaw = K_yaw_lower*self.yaw
-                print("correcting x&y with PI control and yaw")
+                print("correcting x&y error with PI control and yaw")
             
             time_now = time.time()
             time_stamp = time_now - start_time
             time_inputs.append(time_stamp)
             x_input.append(temp_x)
             y_input.append(temp_y)
+            integral_error_y.append(y_error_integral)
             z_input.append(temp_z)
             yaw_input.append(temp_yaw)
             
@@ -405,7 +454,7 @@ class StreamingExample:
             print("z is good: ", z_cond)
             print("\n")
             
-            print("x: ", round(x*1000), "mm, y: ", round(self.y*1000), "mm, z: " , round(self.z*1000), "mm, yaw: ", np.rad2deg(self.yaw))
+            print("x: ", round(self.x*1000), "mm, y: ", round(self.y*1000), "mm, z: " , round(self.z*1000), "mm, yaw: ", np.rad2deg(self.yaw))
             print("x: ", round(temp_x*1000), "mm, y: ", round(temp_y*1000), "mm, z: " , round(temp_z*1000), "mm, yaw: ", np.rad2deg(temp_yaw))
             
             print("\n================================\n")
@@ -417,7 +466,7 @@ class StreamingExample:
 
 
     def write_csv(self, unique_filename):
-        rows = zip_longest(time_array, x_array, y_array, z_array, yaw_array, time_inputs, x_input, y_input, z_input, yaw_input, integral_error_y, fillvalue='')
+        rows = zip_longest(time_array, x_array, y_array, z_array, yaw_array, time_inputs, x_input, y_input, z_input, yaw_input, integral_error_y, end_time, fillvalue='')
         
         # Specify the CSV file path
         os.mkdir('/home/levi/Documents/drone_testing/drone_csv/' + unique_filename)
@@ -428,7 +477,7 @@ class StreamingExample:
             # Create a CSV writer object
             csv_writer = csv.writer(csvfile)
             
-            column_titles = ['Output Time', 'X', 'Y', 'Z', 'Yaw', 'Input Time','X Input', 'Y Input', 'Z Input', 'Yaw Input', 'Y Integral Error']
+            column_titles = ['Output Time', 'X', 'Y', 'Z', 'Yaw', 'Input Time','X Input', 'Y Input', 'Z Input', 'Yaw Input', 'Y Integral Error', 'Total Run Time']
             csv_writer.writerow(column_titles)
 
             # Write the rows (arrays side by side) to the CSV file
@@ -461,7 +510,11 @@ yaw_input = array('f')
 integral_error_y = array('f')
 time_inputs = array('f')
 
+end_time = array('f')
+
 def loop_control():
+    
+    start_time = time.time()
     drone = StreamingExample()
     # Start the video stream
     drone.start()
@@ -475,6 +528,8 @@ def loop_control():
 
     # this runs the P controlled landing method
     drone.correct_land()
+    
+    end_time.append(start_time - time.time())
 
     drone.move_gimbal(0)
     

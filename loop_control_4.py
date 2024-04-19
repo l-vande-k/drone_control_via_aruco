@@ -70,10 +70,10 @@ class StreamingExample:
         You can record the video stream from the drone if you plan to do some post processing.
         This is currently turned off... it stops some error messages
         '''
-        self.drone.streaming.set_output_files(
-            video=os.path.join(self.recorded_video, "streaming.mp4"),
-            # metadata=os.path.join(self.recorded_video, "streaming_metadata.json"),
-        )
+        # self.drone.streaming.set_output_files(
+        #     video=os.path.join(self.recorded_video, "streaming.mp4"),
+        #     # metadata=os.path.join(self.recorded_video, "streaming_metadata.json"),
+        # )
 
         # Setup your callback functions to do some live video processing
         # I don't know what these do
@@ -154,6 +154,12 @@ class StreamingExample:
             # Deserialize and retrieve the variable from the file
             color_flag_index = pickle.load(file)
         
+                # variables for image processing
+        k = np.array([[921.3151587, 0., 666.84963128],
+                    [0., 921.88843465, 354.19572665],
+                    [0., 0., 1.]])
+        
+        d = np.array([1.13291286e-02, 3.14439185e-01, -5.19291075e-03, -2.07237003e-04, -5.95381063e-01])
 
         while True:
             
@@ -162,13 +168,6 @@ class StreamingExample:
                 break
             
             if yuv_frame_cache is not None and len(yuv_frame_cache) > 5 and yuv_frame_2dArray_cache is not None and len(yuv_frame_2dArray_cache) > 5:
-
-                # variables for image processing
-                k = np.array([[921.3151587, 0., 666.84963128],
-                            [0., 921.88843465, 354.19572665],
-                            [0., 0., 1.]])
-                
-                d = np.array([1.13291286e-02, 3.14439185e-01, -5.19291075e-03, -2.07237003e-04, -5.95381063e-01])
                 
                 # this creates the flag that is passed into the following lines that is used for bgr conversion
                 
@@ -212,7 +211,7 @@ class StreamingExample:
                         self.z = tvec[0][0][2] # +z axis in frame is +z on drone
                         
                         # ===== this section is the SME filter ======
-                        MA_width = 150
+                        MA_width = 200
                         yaw_deque.append(self.yaw)
                         if len(yaw_deque) <= MA_width:
                             continue
