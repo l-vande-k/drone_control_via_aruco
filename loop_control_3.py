@@ -332,13 +332,10 @@ class StreamingExample:
         K_yaw = 1
         K_yaw_lower = 0.5
         K_z = 1/5
-        
-        K_xy_i = 0.08
-        
-        x_error_integral = 0
+                
         y_error_integral = 0
         
-        offset = 2 / 100        # cm
+        offset = 3.0/100.0        # cm
         
         correct_criteria_count = 0
         
@@ -348,12 +345,14 @@ class StreamingExample:
             
             # conditionals
             
-            upper_x_y_cond = abs(self.x) > x_y_upper_tol or abs(self.y) > x_y_upper_tol
-            upper_x_cond = abs(self.x) > x_y_upper_tol 
+            x = self.x - offset
+            
+            upper_x_y_cond = abs(x) > x_y_upper_tol or abs(self.y) > x_y_upper_tol
+            upper_x_cond = abs(x) > x_y_upper_tol 
             upper_y_cond = abs(self.y) > x_y_upper_tol
             
             yaw_cond = abs(np.rad2deg(self.yaw)) < yaw_tol
-            x_cond = abs(self.x) < x_y_lower_tol
+            x_cond = abs(x) < x_y_lower_tol
             y_cond = abs(self.y) < x_y_lower_tol
             z_cond = abs(self.z) < z_min
             
@@ -376,7 +375,7 @@ class StreamingExample:
             # if not, continue pose adjustments
             if upper_x_y_cond:
                 if upper_x_cond:
-                    temp_x = K_xy_upper*self.x
+                    temp_x = K_xy_upper*x
                     temp_y = K_xy_upper*self.y
                     temp_z = 0
                     temp_yaw = 0
@@ -397,7 +396,7 @@ class StreamingExample:
                     print("correcting large x error")
                 
                 if upper_y_cond:
-                    temp_x = K_xy_upper*self.x
+                    temp_x = K_xy_upper*x
                     temp_y = K_xy_upper*self.y
                     temp_z = 0
                     temp_yaw = 0
@@ -432,7 +431,7 @@ class StreamingExample:
                 # this section contains the PI control
                 # x_error_integral += x
                 y_error_integral += self.y
-                temp_x = K_xy_lower*self.x #+ K_xy_i*x_error_integral
+                temp_x = K_xy_lower*x #+ K_xy_i*x_error_integral
                 temp_y = K_xy_lower*self.y #+ K_xy_i*y_error_integral
                 temp_z = 0
                 temp_yaw = K_yaw_lower*self.yaw
