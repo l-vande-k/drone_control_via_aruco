@@ -35,6 +35,7 @@ DRONE_RTSP_PORT = os.environ.get("DRONE_RTSP_PORT")
 class StreamingExample:
 
     frame_count = 0
+    start_processing = False
     stop_processing = False
     
     x = 0
@@ -134,7 +135,7 @@ class StreamingExample:
             if self.frame_count < 30:
                 self.frame_count += 1
                 if self.frame_count >= 28 and thread_not_started:
-                    self.processing_thread.start()
+                    self.start_processing = True
                     print("processing started")
                     thread_not_started = False
             else:
@@ -211,7 +212,6 @@ class StreamingExample:
                         # here we get the translational values from the translation vector, tvec
                         # these measurements aren't accurate, they need to be enlarged
                         scaler = 1.0/0.4275
-
                         tvec = tvec*scaler
                         
                         # cv2.drawFrameAxes(bgr_frame, k, d, rvec, tvec, 0.01) 
@@ -223,13 +223,14 @@ class StreamingExample:
                         no_filter_x.append(x)
                         no_filter_y.append(y)
                         
-                        upper_bound = 1.25
-                        lower_bound = 0.65
-                        filter_width = 25
+                        
+                        upper_bound = 2
+                        lower_bound = 0.5
+                        filter_width = 20
                         # ==== y filter ====
                         if len(y_filter) >= filter_width:
                             y_avg = np.average(y_filter)
-                            if abs(y) > abs(y_avg)*upper_bound or abs(y) < abs(y_avg)*lower_bound:
+                            if abs(y) > abs(y_avg)*upper_bound:# or abs(y) < abs(y_avg)*lower_bound:
                                 y = y_avg
                         y_filter.append(y)
                         if len(y_filter) >= filter_width:
@@ -238,12 +239,12 @@ class StreamingExample:
                         # ==== x filter ====
                         if len(x_filter) >= filter_width:
                             x_avg = np.average(x_filter)
-                            if abs(x) > abs(x_avg)*upper_bound or abs(x) < abs(x_avg)*lower_bound:
+                            if abs(x) > abs(x_avg)*upper_bound:# or abs(x) < abs(x_avg)*lower_bound:
                                 x = x_avg
                         x_filter.append(x)
                         if len(x_filter) >= filter_width:
                             x_filter.popleft()
-                            
+                        
                         # ===== this section is the moving average filter for yaw ======
                         MA_width = 150
                         yaw_deque.append(yaw_pre_filter)
@@ -251,9 +252,7 @@ class StreamingExample:
                             continue
                         else:
                             yaw_deque.popleft()
-                        yaw = np.average(yaw_deque)
-                        # for processing later
-                        yaw_MA_array.append(yaw_pre_filter)
+                        yaw = np.average(yaw_deque)                        
                         
                         # we need to add these to the array we are storing the values in
                         
@@ -261,7 +260,9 @@ class StreamingExample:
                         y_array.append(y)
                         z_array.append(z)
                         yaw_array.append(yaw)
+                        yaw_MA_array.append(yaw_pre_filter)
                         
+                        # record the inputs too
                         x_input.append(self.temp_x)
                         y_input.append(self.temp_y)
                         z_input.append(self.temp_z)
@@ -272,7 +273,7 @@ class StreamingExample:
                         time_stamp = time_now - start_time
                         time_array.append(time_stamp)
                         
-                        # update values for the controller
+                        # update values for the controller with filtered data
                         
                         self.x = x
                         self.y = y
@@ -342,7 +343,7 @@ class StreamingExample:
         temp_x = 0                     # in m
         temp_y = 0                     # in m
         self.temp_z = 0                     # in m
-        temp_yaw = np.deg2rad(360)     # in rad
+        temp_yaw = np.deg2rad(15)     # in rad
         max_horizontal_speed = 10      # in m/s
         max_vertical_speed = 10        # in m/s
         max_yaw_rotation_speed = np.deg2rad(720)      # in rad/s
@@ -376,14 +377,14 @@ class StreamingExample:
         # tolerancing for landing conditions
         
         yaw_tol = 3                 # in degrees
-        x_y_upper_tol = 5  / 100      # in cm
+        x_y_upper_tol = 6  / 100      # in cm
         x_y_lower_tol = 7   / 1000    # in mm
         z_min = 0.56                  # in m
         
         # gains for movement control inputs
         
-        K_xy_upper = 0.8
-        K_xy_lower = 0.6
+        K_xy_upper = 1
+        K_xy_lower = 0.8
         
         K_yaw = 1
         K_yaw_lower = 0.5
@@ -488,7 +489,7 @@ class StreamingExample:
                 self.temp_z = 0
                 self.temp_yaw = K_yaw_lower*self.yaw
                 
-                print("correcting x, y ,&yaw")
+                print("correcting x, y ,& yaw error")
             
             print("___CHECKING BOOLS___")
             print("yaw is good: ", yaw_cond)
@@ -520,25 +521,18 @@ class StreamingExample:
 
 
     def write_csv(self, unique_filename):
-        rows = zip_longest(time_array, x_array, no_filter_x, y_array, no_filter_y, z_array, yaw_array, x_input, y_input, z_input, yaw_input, integral_error_y, end_time, fillvalue='')
+        rows = zip_longest(time_array,  x_array, no_filter_x,   y_array, no_filter_y,   z_array, yaw_array, x_input,   y_input,   z_input,   yaw_input,   end_time, fillvalue='')
+        column_titles = ['Output Time', 'X',     'X No Filter', 'Y',     'Y No Filter', 'Z',     'Yaw',     'X Input', 'Y Input', 'Z Input', 'Yaw Input', 'Total Run Time']
         
-        # Specify the CSV file path
         os.mkdir('/home/levi/Documents/drone_testing/drone_csv/' + unique_filename)
         csv_file_path = '/home/levi/Documents/drone_testing/drone_csv/' + unique_filename + '/data.csv'
         
         # Open the CSV file in write mode
         with open(csv_file_path, 'w', newline='') as csvfile:
-            # Create a CSV writer object
             csv_writer = csv.writer(csvfile)
-            
-            column_titles = ['Output Time', 'X', 'X No Filter', 'Y', 'Y No Filter', 'Z', 'Yaw', 'Input Time','X Input', 'Y Input', 'Z Input', 'Yaw Input', 'Y Integral Error', 'Total Run Time']
             csv_writer.writerow(column_titles)
-
-            # Write the rows (arrays side by side) to the CSV file
             csv_writer.writerows(rows)
-        
-        rows = zip(time_array, yaw_MA_array)
-    
+            
 # variables used in threads
 yuv_frame_2dArray_cache = deque()
 yuv_frame_cache = deque()
@@ -553,6 +547,7 @@ yaw_deque = deque()
 no_filter_x = array('f')
 no_filter_y = array('f')
 
+# these have the filtered data
 x_array = array('f')
 y_array = array('f')
 z_array = array('f')
@@ -580,9 +575,10 @@ def loop_control():
     drone.takeoff_spin()
     
     drone.move_gimbal(-90)
-    
+    if drone.start_processing == True:
+        drone.processing_thread.start()
     print("landing sequence started")
-
+    
     # this runs the P controlled landing method
     drone.correct_land()
     
