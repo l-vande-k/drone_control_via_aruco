@@ -222,31 +222,32 @@ class StreamingExample:
                         
                         no_filter_x.append(x)
                         no_filter_y.append(y)
-                        
-                        
-                        upper_bound = 2
-                        lower_bound = 0.5
-                        filter_width = 20
-                        # ==== y filter ====
+
+                        error_max = 0.03
+                        filter_width = 4
                         if len(y_filter) >= filter_width:
                             y_avg = np.average(y_filter)
-                            if abs(y) > abs(y_avg)*upper_bound:# or abs(y) < abs(y_avg)*lower_bound:
+                            if abs(y_avg - y) > error_max:
                                 y = y_avg
-                        y_filter.append(y)
-                        if len(y_filter) >= filter_width:
-                            y_filter.popleft()
                         
-                        # ==== x filter ====
                         if len(x_filter) >= filter_width:
                             x_avg = np.average(x_filter)
-                            if abs(x) > abs(x_avg)*upper_bound:# or abs(x) < abs(x_avg)*lower_bound:
+                            if abs(x_avg - x) > error_max:
                                 x = x_avg
-                        x_filter.append(x)
+                        
+
+                        # ==== y filter ====
+                        if len(y_filter) >= filter_width:
+                            y_filter.popleft()
+                        # ==== x filter ====
                         if len(x_filter) >= filter_width:
                             x_filter.popleft()
-                        
+
+                        y_filter.append(y)
+                        x_filter.append(x)
+
                         # ===== this section is the moving average filter for yaw ======
-                        MA_width = 150
+                        MA_width = 200
                         yaw_deque.append(yaw_pre_filter)
                         if len(yaw_deque) <= MA_width:
                             continue
@@ -339,7 +340,6 @@ class StreamingExample:
             | (TakeOff() & FlyingStateChanged(state="hovering"))
         ).wait()
         # take a 360 pan of the room for post processing
-        # self.drone(moveBy(0, 0, 0, np.deg2rad(360), _timeout=20)).wait()
         temp_x = 0                     # in m
         temp_y = 0                     # in m
         self.temp_z = 0                     # in m
@@ -356,7 +356,7 @@ class StreamingExample:
                 max_horizontal_speed,       # in m/s
                 max_vertical_speed,         # in m/s
                 max_yaw_rotation_speed,     # in m/s
-                _timeout = 30,                # default is 10
+                _timeout = 5,                # default is 10
             )
         ).wait()
 
@@ -379,15 +379,15 @@ class StreamingExample:
         yaw_tol = 3                 # in degrees
         x_y_upper_tol = 6  / 100      # in cm
         x_y_lower_tol = 7   / 1000    # in mm
-        z_min = 0.56                  # in m
+        z_min = 0.58                  # in m
         
         # gains for movement control inputs
         
         K_xy_upper = 1
-        K_xy_lower = 0.8
+        K_xy_lower = 1.08
         
         K_yaw = 1
-        K_yaw_lower = 0.5
+        K_yaw_lower = 0.1
         K_z = 1/5
         
         offset = 3.0/100.0        # cm
@@ -516,7 +516,7 @@ class StreamingExample:
                 )
             ).wait()
         
-        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
+        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=8)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
 
 

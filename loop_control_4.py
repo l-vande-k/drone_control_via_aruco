@@ -8,9 +8,6 @@ import numpy as np
 import time
 import pickle
 from array import *
-import csv
-
-from itertools import zip_longest
 
 import cv2
 import cv2.aruco as aruco
