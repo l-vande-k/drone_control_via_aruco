@@ -343,7 +343,7 @@ class StreamingExample:
         temp_x = 0                     # in m
         temp_y = 0                     # in m
         self.temp_z = 0                     # in m
-        temp_yaw = np.deg2rad(15)     # in rad
+        temp_yaw = np.deg2rad(360)     # in rad
         max_horizontal_speed = 10      # in m/s
         max_vertical_speed = 10        # in m/s
         max_yaw_rotation_speed = np.deg2rad(720)      # in rad/s
@@ -356,7 +356,7 @@ class StreamingExample:
                 max_horizontal_speed,       # in m/s
                 max_vertical_speed,         # in m/s
                 max_yaw_rotation_speed,     # in m/s
-                _timeout = 5,                # default is 10
+                _timeout = 30,                # default is 10
             )
         ).wait()
 
@@ -379,18 +379,18 @@ class StreamingExample:
         yaw_tol = 3                 # in degrees
         x_y_upper_tol = 6  / 100      # in cm
         x_y_lower_tol = 7   / 1000    # in mm
-        z_min = 0.58                  # in m
+        z_min = 0.6                  # in m
         
         # gains for movement control inputs
         
         K_xy_upper = 1
-        K_xy_lower = 1.08
+        K_xy_lower = 1
         
         K_yaw = 1
         K_yaw_lower = 0.1
         K_z = 1/5
         
-        offset = 3.0/100.0        # cm
+        offset = 2.0/100.0        # cm
         
         correct_criteria_count = 0
         
@@ -481,7 +481,7 @@ class StreamingExample:
             
             elif not x_cond or not y_cond:
                 
-                max_horizontal_speed = 1                    # in m/s
+                max_horizontal_speed = 1.0                  # in m/s
                 max_yaw_rotation_speed = np.deg2rad(720)    # in rad/s
 
                 self.temp_x = K_xy_lower*x
@@ -512,7 +512,7 @@ class StreamingExample:
                     max_horizontal_speed,       # in m/s
                     max_vertical_speed,         # in m/s
                     max_yaw_rotation_speed,     # in rad/s
-                    _timeout=30,                # default is 10
+                    _timeout=15,                # default is 10
                 )
             ).wait()
         
