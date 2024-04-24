@@ -22,37 +22,28 @@ from olympe.video.renderer import PdrawRenderer
 
 from collections import *
 
-
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
 
 DRONE_IP = os.environ.get("DRONE_IP", "192.168.42.1")
 DRONE_RTSP_PORT = os.environ.get("DRONE_RTSP_PORT")
-
 
 class StreamingExample:
 
     frame_count = 0
     start_processing = False
     stop_processing = False
-    
-    x = 0
-    y = 0
-    z = 0
-    yaw = 0
-    
+    x = 0; y = 0; z = 0; yaw = 0
     unique_filename = ""
 
     def __init__(self):
         # Create the olympe.Drone object from its IP address
         self.drone = olympe.Drone(DRONE_IP)
 
-
         # this creates a folder with a unique name in a known directory location
         self.unique_filename = str(uuid.uuid4())
         self.recorded_video = "/home/levi/Documents/drone_testing/drone_vids/" + self.unique_filename
         os.mkdir(self.recorded_video)
-        #print(f"Olympe streaming example output dir: {self.recorded_video}")
-
+        print(f"Olympe streaming example output dir: {self.recorded_video}")
 
         self.frame_queue = queue.Queue()
         self.frame_grabbing_thread = threading.Thread(target=self.yuv_frame_grabbing)
@@ -67,10 +58,6 @@ class StreamingExample:
         if DRONE_RTSP_PORT is not None:
             self.drone.streaming.server_addr = f"{DRONE_IP}:{DRONE_RTSP_PORT}"
 
-        '''
-        You can record the video stream from the drone if you plan to do some post processing.
-        This is currently turned off... it stops some error messages
-        '''
         # self.drone.streaming.set_output_files(
         #     video=os.path.join(self.recorded_video, "streaming.mp4"),
         #     metadata=os.path.join(self.recorded_video, "streaming_metadata.json"),
@@ -164,9 +151,7 @@ class StreamingExample:
         d = np.array([1.13291286e-02, 3.14439185e-01, -5.19291075e-03, -2.07237003e-04, -5.95381063e-01])
         
         # start the timer for tracking time stamps for graphing
-        
-        start_time = time.time()
-        
+                
         y_filter = deque()
         x_filter = deque()
 
@@ -216,9 +201,31 @@ class StreamingExample:
                         y = tvec[0][0][0] # +x axis in frame is +y on drone
                         x = -1*tvec[0][0][1] # -y axis in frame is +x on drone
                         z = tvec[0][0][2] # +z axis in frame is +z on drone
+
+                        error_max = 0.03
+                        filter_width = 4
+                        if len(y_filter) >= filter_width:
+                            y_avg = np.average(y_filter)
+                            if abs(y_avg - y) > error_max:
+                                y = y_avg
                         
+                        if len(x_filter) >= filter_width:
+                            x_avg = np.average(x_filter)
+                            if abs(x_avg - x) > error_max:
+                                x = x_avg
+
+                        # ==== y filter ====
+                        if len(y_filter) >= filter_width:
+                            y_filter.popleft()
+                        # ==== x filter ====
+                        if len(x_filter) >= filter_width:
+                            x_filter.popleft()
+
+                        y_filter.append(y)
+                        x_filter.append(x)
+
                         # ===== this section is the moving average filter for yaw ======
-                        MA_width = 150
+                        MA_width = 500
                         yaw_deque.append(yaw_pre_filter)
                         if len(yaw_deque) <= MA_width:
                             continue
@@ -253,9 +260,9 @@ class StreamingExample:
         self.drone(
             gimbal.set_max_speed(
                 gimbal_id = 0,
-                yaw = 360.0,
-                pitch = 360.0,
-                roll = 360.0,
+                yaw = 720.0,
+                pitch = 720.0,
+                roll = 720.0,
             )
         )
         
@@ -285,7 +292,6 @@ class StreamingExample:
             )
         )
 
-
     def takeoff_spin(self):
         self.drone(
             FlyingStateChanged(state="hovering")
@@ -295,10 +301,10 @@ class StreamingExample:
         temp_x = 0                     # in m
         temp_y = 0                     # in m
         self.temp_z = 0                     # in m
-        temp_yaw = np.deg2rad(15)     # in rad
+        temp_yaw = np.deg2rad(360)     # in rad
         max_horizontal_speed = 10      # in m/s
         max_vertical_speed = 10        # in m/s
-        max_yaw_rotation_speed = np.deg2rad(720)      # in rad/s
+        max_yaw_rotation_speed = np.deg2rad(1080)      # in rad/s
 
         self.drone(move.extended_move_by(
                 temp_x,                     # in m
@@ -308,7 +314,7 @@ class StreamingExample:
                 max_horizontal_speed,       # in m/s
                 max_vertical_speed,         # in m/s
                 max_yaw_rotation_speed,     # in m/s
-                _timeout = 30,                # default is 10
+                _timeout = 60,                # default is 10
             )
         ).wait()
 
@@ -331,18 +337,18 @@ class StreamingExample:
         yaw_tol = 3                 # in degrees
         x_y_upper_tol = 6  / 100      # in cm
         x_y_lower_tol = 7   / 1000    # in mm
-        z_min = 0.56                  # in m
+        z_min = 0.6                  # in m
         
         # gains for movement control inputs
         
         K_xy_upper = 1
-        K_xy_lower = 0.8
+        K_xy_lower = 1
         
         K_yaw = 1
-        K_yaw_lower = 0.5
+        K_yaw_lower = 0.1
         K_z = 1/5
         
-        offset = 3.0/100.0        # cm
+        offset = 2.0/100.0        # cm
         
         correct_criteria_count = 0
         
@@ -433,8 +439,8 @@ class StreamingExample:
             
             elif not x_cond or not y_cond:
                 
-                max_horizontal_speed = 1                    # in m/s
-                max_yaw_rotation_speed = np.deg2rad(720)    # in rad/s
+                max_horizontal_speed = 1.0                  # in m/s
+                max_yaw_rotation_speed = np.deg2rad(1080)    # in rad/s
 
                 self.temp_x = K_xy_lower*x
                 self.temp_y = K_xy_lower*self.y
@@ -455,6 +461,7 @@ class StreamingExample:
             
             print("\n================================\n")
             
+            # self.drone(moveBy(self.temp_x, self.temp_y, self.temp_z, self.temp_yaw, _timeout=5)).wait()
             self.drone(move.extended_move_by(
                     self.temp_x,                     # in m
                     self.temp_y,                     # in m
@@ -463,11 +470,11 @@ class StreamingExample:
                     max_horizontal_speed,       # in m/s
                     max_vertical_speed,         # in m/s
                     max_yaw_rotation_speed,     # in rad/s
-                    _timeout=30,                # default is 10
+                    _timeout=15,                # default is 10
                 )
             ).wait()
         
-        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=10)).wait()
+        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=8)).wait()
         print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
             
 # variables used in threads
@@ -481,6 +488,7 @@ yaw_deque = deque()
 
 def loop_control():
     
+    # start_time = time.time()
     drone = StreamingExample()
     # Start the video stream
     drone.start()
@@ -491,18 +499,19 @@ def loop_control():
     drone.move_gimbal(-90)
     if drone.start_processing == True:
         drone.processing_thread.start()
-    print("landing sequence started")
     
     # this runs the P controlled landing method
     drone.correct_land()
+    
+    # end_time.append(time.time()- start_time)
     
     drone.move_gimbal(0)
     
     # Stop the video stream
     drone.stop()
     
+    # drone.write_csv(drone.unique_filename)    
     print("done")
-
 
 if __name__ == "__main__":
     loop_control()
