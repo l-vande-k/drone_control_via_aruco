@@ -247,7 +247,7 @@ class StreamingExample:
                         x_filter.append(x)
 
                         # ===== this section is the moving average filter for yaw ======
-                        MA_width = 200
+                        MA_width = 500
                         yaw_deque.append(yaw_pre_filter)
                         if len(yaw_deque) <= MA_width:
                             continue
@@ -301,9 +301,9 @@ class StreamingExample:
         self.drone(
             gimbal.set_max_speed(
                 gimbal_id = 0,
-                yaw = 360.0,
-                pitch = 360.0,
-                roll = 360.0,
+                yaw = 720.0,
+                pitch = 720.0,
+                roll = 720.0,
             )
         )
         
@@ -346,7 +346,7 @@ class StreamingExample:
         temp_yaw = np.deg2rad(360)     # in rad
         max_horizontal_speed = 10      # in m/s
         max_vertical_speed = 10        # in m/s
-        max_yaw_rotation_speed = np.deg2rad(720)      # in rad/s
+        max_yaw_rotation_speed = np.deg2rad(1080)      # in rad/s
 
         self.drone(move.extended_move_by(
                 temp_x,                     # in m
@@ -356,7 +356,7 @@ class StreamingExample:
                 max_horizontal_speed,       # in m/s
                 max_vertical_speed,         # in m/s
                 max_yaw_rotation_speed,     # in m/s
-                _timeout = 30,                # default is 10
+                _timeout = 60,                # default is 10
             )
         ).wait()
 
@@ -482,7 +482,7 @@ class StreamingExample:
             elif not x_cond or not y_cond:
                 
                 max_horizontal_speed = 1.0                  # in m/s
-                max_yaw_rotation_speed = np.deg2rad(720)    # in rad/s
+                max_yaw_rotation_speed = np.deg2rad(1080)    # in rad/s
 
                 self.temp_x = K_xy_lower*x
                 self.temp_y = K_xy_lower*self.y
