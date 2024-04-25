@@ -487,8 +487,6 @@ z_deque = deque()
 yaw_deque = deque()
 
 def loop_control():
-    
-    # start_time = time.time()
     drone = StreamingExample()
     # Start the video stream
     drone.start()
@@ -497,13 +495,12 @@ def loop_control():
     drone.takeoff_spin()
     
     drone.move_gimbal(-90)
+    
     if drone.start_processing == True:
         drone.processing_thread.start()
     
     # this runs the P controlled landing method
     drone.correct_land()
-    
-    # end_time.append(time.time()- start_time)
     
     drone.move_gimbal(0)
     
