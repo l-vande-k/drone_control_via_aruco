@@ -195,9 +195,7 @@ class StreamingExample:
                         # these measurements aren't accurate, they need to be enlarged
                         scaler = 1.0/0.4275
                         tvec = tvec*scaler
-                        
-                        # cv2.drawFrameAxes(bgr_frame, k, d, rvec, tvec, 0.01) 
-                        
+                                                
                         y = tvec[0][0][0] # +x axis in frame is +y on drone
                         x = -1*tvec[0][0][1] # -y axis in frame is +x on drone
                         z = tvec[0][0][2] # +z axis in frame is +z on drone
