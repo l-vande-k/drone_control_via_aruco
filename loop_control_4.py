@@ -446,20 +446,6 @@ class StreamingExample:
                 self.temp_y = K_xy_lower*self.y
                 self.temp_z = 0
                 self.temp_yaw = K_yaw_lower*self.yaw
-                
-                print("correcting x, y ,& yaw error")
-            
-            print("___CHECKING BOOLS___")
-            print("yaw is good: ", yaw_cond)
-            print("x is good: ", x_cond)
-            print("y is good: ", y_cond)
-            print("z is good: ", z_cond)
-            print("\n")
-            
-            print("x: ", self.x*1000, "mm, y: ", self.y*1000, "mm, z: " , self.z*1000, "mm, yaw: ", np.rad2deg(self.yaw))
-            print("x: ", self.temp_x*1000, "mm, y: ", self.temp_y*1000, "mm, z: " , self.temp_z*1000, "mm, yaw: ", np.rad2deg(self.temp_yaw))
-            
-            print("\n================================\n")
             
             # self.drone(moveBy(self.temp_x, self.temp_y, self.temp_z, self.temp_yaw, _timeout=5)).wait()
             self.drone(move.extended_move_by(
@@ -475,7 +461,6 @@ class StreamingExample:
             ).wait()
         
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=8)).wait()
-        print("x: ", self.x, ", y: ", self.y, ", z: " , self.z, ", yaw: ", np.rad2deg(self.yaw), "\n")
             
 # variables used in threads
 yuv_frame_2dArray_cache = deque()
@@ -507,8 +492,5 @@ def loop_control():
     # Stop the video stream
     drone.stop()
     
-    # drone.write_csv(drone.unique_filename)    
-    print("done")
-
 if __name__ == "__main__":
     loop_control()
