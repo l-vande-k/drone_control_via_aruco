@@ -445,7 +445,6 @@ class StreamingExample:
                 self.temp_z = 0
                 self.temp_yaw = K_yaw_lower*self.yaw
             
-            # self.drone(moveBy(self.temp_x, self.temp_y, self.temp_z, self.temp_yaw, _timeout=5)).wait()
             self.drone(move.extended_move_by(
                     self.temp_x,                     # in m
                     self.temp_y,                     # in m
